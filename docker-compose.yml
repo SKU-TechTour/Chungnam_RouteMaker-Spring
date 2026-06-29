@@ -1,15 +1,23 @@
-version: '3.8'
 services:
+  # 1. PostgreSQL 데이터베이스 설정
   postgres:
     image: postgres:15-alpine
     container_name: study-postgres
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: study_user
-      POSTGRES_PASSWORD: study_password
-      POSTGRES_DB: study_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: routemaker_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  # 2. Redis 캐시 서버 설정 (★새로 추가!)
+  redis:
+    image: redis:7-alpine
+    container_name: study-redis
+    ports:
+      - "6379:6379"
+
 volumes:
   postgres_data:
