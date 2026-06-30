@@ -1,13 +1,12 @@
-package org.example.routemaker_backend;
+package com.example.routemaker;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class RoutemakerBackendApplicationTests {
+class RoutemakerApplicationTests {
 
     @Test
     void contextLoads() {
     }
-
 }

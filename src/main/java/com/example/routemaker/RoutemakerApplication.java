@@ -1,13 +1,12 @@
-package org.example.routemaker_backend;
+package com.example.routemaker;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class RoutemakerBackendApplication {
+public class RoutemakerApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(RoutemakerBackendApplication.class, args);
+        SpringApplication.run(RoutemakerApplication.class, args);
     }
-
 }
