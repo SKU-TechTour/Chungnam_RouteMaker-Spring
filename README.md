@@ -1,6 +1,9 @@
-# Chungnam_RouteMaker-Spring
+# Chungnam RouteMaker — Spring Frontend
 
-[충남 루트메이커] 앱의 Backend
+> **Frontend**: Flutter (MVVM + Feature-first)  
+> **Backend**: Spring (DDD / Layered Architecture)  
+
+---
 
 ## Github Guidline
 
