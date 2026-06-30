@@ -48,7 +48,7 @@ refactor: PlaceService 필터 로직을 PlaceFilterService로 분리
 
 ---
 
-# RouteMaker Backend
+# 1. 아키텍처 개요
 
 충남 지역(논산·공주·부여) 여행 코스 추천 앱 **RouteMaker**의 Spring Boot 백엔드입니다.
 
