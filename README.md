@@ -1,4 +1,4 @@
-# Chungnam RouteMaker — Spring Frontend
+# Chungnam RouteMaker — Spring Backend
 
 > **Frontend**: Flutter (MVVM + Feature-first)  
 > **Backend**: Spring (DDD / Layered Architecture)  
