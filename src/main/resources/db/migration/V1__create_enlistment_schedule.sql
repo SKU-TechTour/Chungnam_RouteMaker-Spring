@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS enlistment_schedule (
         CHECK (application_start_date <= application_end_date)
 );
 
+-- Hibernate가 먼저 빈 테이블을 만든 기존 개발 DB에도 수동 데이터가 들어가도록 보정합니다.
+ALTER TABLE enlistment_schedule
+    ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP;
+
 CREATE INDEX IF NOT EXISTS idx_enlistment_schedule_enlistment_date
     ON enlistment_schedule (enlistment_date);
 
