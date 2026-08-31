@@ -92,6 +92,34 @@ Flutter가 **클라이언트(UI·GPS·지도)**, Spring이 **비즈니스 로직
 
 ---
 
+## 병무청 입영 일정 API
+
+입영 일정은 PostgreSQL의 `enlistment_schedule` 테이블에 저장하고 모든 응답은
+`ApiResponse<T>` 형식으로 반환합니다. 최초 실행 시 Flyway가 테이블과 개발용
+수동 데이터 20건을 생성합니다.
+
+```http
+GET /api/military/enlistment-schedules
+GET /api/military/enlistment-schedules?branch=ARMY&fromDate=2026-09-01&toDate=2026-12-31
+GET /api/military/enlistment-schedules/{scheduleId}
+```
+
+`branch`는 `ARMY`, `NAVY`, `AIR_FORCE`, `MARINE_CORPS` 중 하나입니다. 초기 20건은
+화면 및 API 개발을 위한 수동 데이터이므로 운영 반영 전 병무청 공식 공고와
+날짜를 반드시 대조해야 합니다.
+
+로컬 인프라는 다음 명령으로 실행합니다.
+
+```bash
+docker compose up -d
+./gradlew bootRun
+```
+
+환경별로 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`를
+지정할 수 있으며, 지정하지 않으면 `docker-compose.yml`의 로컬 기본값을 사용합니다.
+
+---
+
 ## 아키텍처 설계 원칙
 
 ### DDD + Layered Architecture + Package by Feature
