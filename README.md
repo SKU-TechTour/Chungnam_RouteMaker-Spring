@@ -118,6 +118,39 @@ docker compose up -d
 환경별로 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`를
 지정할 수 있으며, 지정하지 않으면 `docker-compose.yml`의 로컬 기본값을 사용합니다.
 
+## 관광·날씨·카카오 API 연동
+
+API 키는 Git에 저장하지 않고 실행 환경에만 넣습니다. 채팅, 이슈, README 등에 노출된
+키는 카카오 디벨로퍼스에서 재발급한 뒤 새 키를 사용하세요.
+
+```powershell
+$env:TOUR_API_SERVICE_KEY="공공데이터포털 일반 인증키"
+$env:WEATHER_API_SERVICE_KEY="공공데이터포털 일반 인증키"
+$env:KAKAO_REST_API_KEY="카카오 REST API 키"
+.\gradlew.bat bootRun
+```
+
+아래 API는 JWT 인증 후 호출합니다. 서버는 키를 Flutter에 노출하지 않습니다.
+
+```http
+GET /api/external/tour/search?keyword=공산성
+GET /api/external/tour/operating-info?contentId={id}&contentTypeId={type}
+GET /api/external/tour/pet-info?contentId={id}
+GET /api/external/weather/short-term?baseDate=20260831&baseTime=1400&nx=62&ny=97
+GET /api/external/kakao/places?query=논산 맛집&categoryGroupCode=FD6
+GET /api/external/kakao/driving-route?originPlaceId=1&destinationPlaceId=2
+```
+
+TourAPI의 `detailIntro2`는 관광지·문화시설·음식점별로 서로 다른 필드명과 자유문자
+영업 정보를 반환합니다. 백엔드는 이를 `restDay`, `openTime`, `parking`, `contact`로
+정규화하지만, 문장을 임의로 파싱해 `영업 중`이라고 단정하지 않습니다. 화면에는
+원문과 최신 확인 안내를 보여주고 방문 전 전화/공식 페이지 확인을 함께 안내합니다.
+반려동물 정보는 같은 TourAPI의 `detailPetTour2`를 사용합니다.
+
+사용자 현재 GPS와 관광지 간 직선거리는 Flutter의 `geolocator`로 기기 안에서만
+계산합니다. 카카오 차량 길찾기는 임의 좌표 대신 DB에 등록된 `originPlaceId`와
+`destinationPlaceId`만 받으므로 현재 GPS를 Spring 서버로 전송하지 않습니다.
+
 ---
 
 ## 아키텍처 설계 원칙
