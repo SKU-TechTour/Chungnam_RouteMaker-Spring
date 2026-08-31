@@ -1,40 +1,42 @@
 package com.example.routemaker.global.client.weather;
 
-import tools.jackson.databind.JsonNode;
+import com.example.routemaker.global.client.weather.dto.WeatherForecastItemResponse;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
+import tools.jackson.databind.JsonNode;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 @Component
 public class WeatherApiClient {
-    private final RestClient client;
+    private final WebClient client;
     private final String serviceKey;
 
-    public WeatherApiClient(@Value("${external-api.weather.base-url:https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0}") String baseUrl,
+    public WeatherApiClient(@Qualifier("weatherWebClient") WebClient client,
                             @Value("${external-api.weather.service-key:}") String serviceKey) {
-        this.client = RestClient.builder().baseUrl(baseUrl).build();
+        this.client = client;
         this.serviceKey = serviceKey;
     }
 
-    public List<ForecastItem> shortTerm(String baseDate, String baseTime, int nx, int ny) {
+    public List<WeatherForecastItemResponse> shortTerm(String baseDate, String baseTime, int nx, int ny) {
         if (!StringUtils.hasText(serviceKey)) throw new IllegalStateException("WEATHER_API_SERVICE_KEY 환경변수가 필요합니다.");
         JsonNode root = client.get().uri(builder -> builder.path("/getVilageFcst")
                         .queryParam("serviceKey", serviceKey).queryParam("pageNo", 1).queryParam("numOfRows", 1000)
                         .queryParam("dataType", "JSON").queryParam("base_date", baseDate)
                         .queryParam("base_time", baseTime).queryParam("nx", nx).queryParam("ny", ny).build())
-                .retrieve().body(JsonNode.class);
-        List<ForecastItem> result = new ArrayList<>();
+                .retrieve().bodyToMono(JsonNode.class).block(Duration.ofSeconds(10));
+        List<WeatherForecastItemResponse> result = new ArrayList<>();
         if (root == null) return result;
         for (JsonNode item : root.path("response").path("body").path("items").path("item")) {
-            result.add(new ForecastItem(item.path("category").asText(), item.path("fcstDate").asText(),
-                    item.path("fcstTime").asText(), item.path("fcstValue").asText()));
+            result.add(WeatherForecastItemResponse.from(item));
         }
         return result;
     }
@@ -64,6 +66,4 @@ public class WeatherApiClient {
         try { return Integer.parseInt(value); }
         catch (NumberFormatException ignored) { return 0; }
     }
-
-    public record ForecastItem(String category, String forecastDate, String forecastTime, String value) {}
 }
