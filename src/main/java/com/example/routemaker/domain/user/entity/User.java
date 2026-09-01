@@ -28,6 +28,9 @@ public class User implements UserDetails {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true, length = 128)
+    private String firebaseUid;
+
     @Column(nullable = false, unique = true)
     private String email;
 
@@ -46,6 +49,7 @@ public class User implements UserDetails {
 
     @Builder
     public User(
+            String firebaseUid,
             String email,
             String password,
             String nickname,
@@ -53,12 +57,17 @@ public class User implements UserDetails {
             LocalDate trainingStartDate,
             Long militaryUnitId
     ) {
+        this.firebaseUid = firebaseUid;
         this.email = email;
         this.password = password;
         this.nickname = nickname;
         this.military = military;
         this.trainingStartDate = trainingStartDate;
         this.militaryUnitId = militaryUnitId;
+    }
+
+    public void linkFirebaseUid(String firebaseUid) {
+        this.firebaseUid = firebaseUid;
     }
 
     @Override

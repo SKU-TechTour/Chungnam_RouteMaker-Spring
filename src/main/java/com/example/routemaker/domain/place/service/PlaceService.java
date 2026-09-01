@@ -2,62 +2,61 @@ package com.example.routemaker.domain.place.service;
 
 import com.example.routemaker.domain.place.dto.PlaceFilterRequest;
 import com.example.routemaker.domain.place.dto.PlaceResponse;
-import com.example.routemaker.domain.place.entity.Place;
-import com.example.routemaker.domain.place.repository.PlaceRepository;
+import com.example.routemaker.global.client.tour.TourApiClient;
+import com.example.routemaker.global.client.tour.dto.TourOperatingInfoResponse;
+import com.example.routemaker.global.client.tour.dto.TourPlaceResponse;
+import com.example.routemaker.global.common.enums.Region;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class PlaceService {
 
-    private final PlaceRepository placeRepository;
+    private static final String CHUNGNAM_AREA_CODE = "34";
+    private final TourApiClient tourApiClient;
 
     public List<PlaceResponse> searchPlaces(PlaceFilterRequest request) {
-        List<PlaceResponse> places = placeRepository.findAll().stream()
-                .filter(place -> matchesRegion(place, request))
-                .filter(place -> matchesCategory(place, request))
-                .filter(place -> matchesFilters(place, request))
-                .sorted(militaryDiscountFirst(request.isMilitaryOnly()))
-                .map(PlaceResponse::from)
+        Region region = request.getRegion() == null ? Region.NONSAN : request.getRegion();
+        if (request.isStrollerAccessible() || request.isMilitaryOnly()) {
+            return List.of();
+        }
+
+        Set<String> petFriendlyIds = request.isPetFriendly()
+                ? tourApiClient.petFriendlyContentIds()
+                : Set.of();
+
+        return tourApiClient.areaBased(CHUNGNAM_AREA_CODE, sigunguCode(region)).stream()
+                .map(place -> enrich(place, region, request, petFriendlyIds))
+                .filter(response -> request.getCategory() == null || response.getCategory() == request.getCategory())
+                .filter(response -> !request.isPetFriendly() || response.isPetFriendly())
+                .filter(response -> !request.isLargeParking() || response.isLargeParking())
                 .toList();
-
-        return places;
     }
 
-    private boolean matchesRegion(Place place, PlaceFilterRequest request) {
-        return request.getRegion() == null || place.getRegion() == request.getRegion();
+    private PlaceResponse enrich(TourPlaceResponse place, Region region, PlaceFilterRequest request,
+                                 Set<String> petFriendlyIds) {
+        boolean petFriendly = petFriendlyIds.contains(place.contentId());
+        boolean largeParking = request.isLargeParking() && hasLargeParking(place);
+        return PlaceResponse.fromTour(place, region, petFriendly, largeParking);
     }
 
-    private boolean matchesCategory(Place place, PlaceFilterRequest request) {
-        return request.getCategory() == null || place.getCategory() == request.getCategory();
+    private boolean hasLargeParking(TourPlaceResponse place) {
+        try {
+            TourOperatingInfoResponse info = tourApiClient.operatingInfo(place.contentId(), place.contentTypeId());
+            return info.parking().contains("대형");
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
-    private boolean matchesFilters(Place place, PlaceFilterRequest request) {
-        if (request.isStrollerAccessible() && !place.isStrollerAccessible()) {
-            return false;
-        }
-        if (request.isPetFriendly() && !place.isPetFriendly()) {
-            return false;
-        }
-        if (request.isLargeParking() && !place.isLargeParking()) {
-            return false;
-        }
-        if (request.isMilitaryOnly() && !place.isMilitaryDiscount()) {
-            return false;
-        }
-        return true;
-    }
-
-    private Comparator<Place> militaryDiscountFirst(boolean militaryOnly) {
-        if (!militaryOnly) {
-            return Comparator.comparing(Place::isMilitaryDiscount).reversed();
-        }
-        return Comparator.comparing(Place::getName);
+    private String sigunguCode(Region region) {
+        return switch (region) {
+            case GONGJU -> "1";
+            case NONSAN -> "3";
+            case BUYEO -> "6";
+        };
     }
 }

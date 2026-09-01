@@ -13,7 +13,10 @@ public class ExternalWebClientConfig {
     @Qualifier("tourWebClient")
     WebClient tourWebClient(WebClient.Builder builder,
                             @Value("${external-api.tour.base-url:https://apis.data.go.kr/B551011/KorService2}") String baseUrl) {
-        return builder.clone().baseUrl(baseUrl).build();
+        return builder.clone()
+                .baseUrl(baseUrl)
+                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                .build();
     }
 
     @Bean

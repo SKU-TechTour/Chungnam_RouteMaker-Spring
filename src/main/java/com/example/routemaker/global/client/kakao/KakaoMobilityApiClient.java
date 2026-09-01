@@ -34,6 +34,10 @@ public class KakaoMobilityApiClient {
                 summary.path("fare").path("toll").asInt(), summary.path("fare").path("taxi").asInt());
     }
 
+    public boolean isConfigured() {
+        return StringUtils.hasText(apiKey);
+    }
+
     private void requireKey() {
         if (!StringUtils.hasText(apiKey)) throw new IllegalStateException("KAKAO_REST_API_KEY 환경변수가 필요합니다.");
     }

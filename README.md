@@ -31,7 +31,7 @@ fix: JWT 만료 시 401 대신 500이 반환되던 문제 수정
 #### chore — 설정 변경
 
 ```
-chore: Redis Docker Compose 설정 추가
+chore: Cloudtype 배포 환경 변수 정리
 ```
 
 #### docs — 문서
@@ -60,19 +60,18 @@ Flutter가 **클라이언트(UI·GPS·지도)**, Spring이 **비즈니스 로직
 │  (Mobile)       │  ◄────────────────────────────────────── │  (routemaker_backend)    │
 └─────────────────┘         ApiResponse<T> JSON              └───────────┬──────────────┘
                                                                            │
-                                    ┌──────────────────────────────────────┼──────────────────────┐
-                                    │                                      │                      │
-                                    ▼                                      ▼                      ▼
-                             PostgreSQL                                 Redis              외부 API
-                             (영속 데이터)                            (캐시, 예정)      (기상청, TourAPI, Chak)
+                                    ┌──────────────────────────────────────┴──────────────────────┐
+                                    │                                                             │
+                                    ▼                                                             ▼
+                             PostgreSQL                                                       외부 API
+                             (사용자·일정)                                      (기상청, TourAPI, 카카오)
 ```
 
 | 구분 | 역할 |
 |------|------|
 | **Flutter** | 화면, 사용자 입력, GPS/지도, JWT 로컬 저장, API 호출 |
 | **Spring** | REST API, 인증/인가, 도메인 규칙, DB CRUD, 외부 API 중계 |
-| **PostgreSQL** | User, Place, Course, Stamp 등 영속 데이터 |
-| **Redis** | 캐시 (날씨·TourAPI 등, 추후 활용 예정) |
+| **PostgreSQL** | User, 입영 일정, Stamp 등 서비스 고유 영속 데이터 |
 
 ---
 
@@ -85,10 +84,9 @@ Flutter가 **클라이언트(UI·GPS·지도)**, Spring이 **비즈니스 로직
 | Web | Spring Web MVC (REST) |
 | ORM | Spring Data JPA / Hibernate |
 | DB | PostgreSQL 15 |
-| Cache | Redis 7 |
-| Security | Spring Security + JWT (Stateless) |
+| Security | Spring Security + Firebase ID Token (Stateless) |
 | Build | Gradle |
-| Infra | Docker Compose (`postgres`, `redis`) |
+| Infra | Docker Compose (`postgres`) |
 
 ---
 
@@ -115,10 +113,21 @@ docker compose up -d
 ./gradlew bootRun
 ```
 
-환경별로 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`를
+환경별로 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`를
 지정할 수 있으며, 지정하지 않으면 `docker-compose.yml`의 로컬 기본값을 사용합니다.
 
 ## 관광·날씨·카카오 API 연동
+
+### 공모전 OpenAPI 준수 원칙
+
+- 관광지 목록·소개·운영정보·반려동물 정보는 요청 시 한국관광공사 OpenAPI를 실시간 호출합니다.
+- TourAPI 응답을 PostgreSQL이나 애플리케이션 메모리에 저장·캐싱하지 않습니다.
+- `GET /api/places`는 DB의 `places` 테이블이 아니라 `areaBasedList2`를 호출합니다.
+- `POST /api/courses/recommend`도 DB 장소 대신 `areaBasedList2`의 실시간 후보를 사용합니다.
+- 코스는 기상청 예보로 실내·실외 장소를 고르고 카카오모빌리티 실시간 차량 거리·시간을 합칩니다.
+- 반려동물 필터를 켜면 각 후보의 `detailPetTour2`를 실시간 조회합니다.
+- 외부 API 실패를 로컬 관광지 데이터로 조용히 대체하지 않고 오류로 반환합니다.
+- 기존 장소 엔티티/시드는 레거시 스키마 호환용이며 운영 관광정보·추천 응답에 사용하지 않습니다.
 
 API 키는 Git에 저장하지 않고 실행 환경에만 넣습니다. 채팅, 이슈, README 등에 노출된
 키는 카카오 디벨로퍼스에서 재발급한 뒤 새 키를 사용하세요.
@@ -130,7 +139,16 @@ $env:KAKAO_REST_API_KEY="카카오 REST API 키"
 .\gradlew.bat bootRun
 ```
 
-아래 API는 JWT 인증 후 호출합니다. 서버는 키를 Flutter에 노출하지 않습니다.
+서버는 인증키를 Flutter에 노출하지 않습니다. 앱의 지역 관광지 목록은 아래 공개 프록시를
+사용하며, 호출할 때마다 TourAPI 호출 내역이 발생합니다.
+
+```http
+GET /api/places?region=NONSAN
+GET /api/places?region=GONGJU&petFriendly=true
+GET /api/places?region=BUYEO&category=HERITAGE
+```
+
+아래 진단용 API는 JWT 인증 후 호출합니다.
 
 ```http
 GET /api/external/tour/search?keyword=공산성
@@ -150,6 +168,32 @@ TourAPI의 `detailIntro2`는 관광지·문화시설·음식점별로 서로 다
 사용자 현재 GPS와 관광지 간 직선거리는 Flutter의 `geolocator`로 기기 안에서만
 계산합니다. 카카오 차량 길찾기는 임의 좌표 대신 DB에 등록된 `originPlaceId`와
 `destinationPlaceId`만 받으므로 현재 GPS를 Spring 서버로 전송하지 않습니다.
+
+### Firebase Authentication 연결
+
+Flutter는 Google 로그인 또는 익명 로그인 후 Firebase ID 토큰을
+`Authorization: Bearer <ID_TOKEN>` 헤더로 전송합니다. Spring은 Firebase Admin SDK로
+서명, 만료 시간, 발급 프로젝트를 검증한 뒤 `firebase_uid`를 로컬 사용자와 연결합니다.
+
+로컬 실행 전 Firebase Console의 **프로젝트 설정 > 서비스 계정 > 새 비공개 키 생성**에서
+받은 JSON을 저장소 바깥에 보관하고 다음 환경변수를 설정합니다. 앱용
+`google-services.json`은 서버 비공개 키가 아니므로 대신 사용할 수 없습니다.
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+  'FIREBASE_SERVICE_ACCOUNT_PATH',
+  'C:\secure\chungnam-routemaker-service-account.json',
+  'User'
+)
+[Environment]::SetEnvironmentVariable(
+  'FIREBASE_PROJECT_ID',
+  'chungnam-routemaker',
+  'User'
+)
+```
+
+새 터미널과 Spring 실행 구성을 다시 시작해야 환경변수가 반영됩니다. 인증 정보는
+첫 인증 요청 시 지연 로딩되므로, 서비스 계정이 없어도 공개 관광 API 서버는 기동됩니다.
 
 ---
 
@@ -198,7 +242,7 @@ src/main/java/com/example/routemaker/
 ├── RoutemakerApplication.java          # Spring Boot 진입점
 │
 ├── global/                             # 전역 공통
-│   ├── config/                         # Security, CORS, Redis, JPA, Swagger
+│   ├── config/                         # Security, CORS, JPA, Swagger
 │   ├── security/                       # JWT Filter, UserDetailsService
 │   ├── exception/                      # GlobalExceptionHandler, ErrorCode
 │   ├── response/                       # ApiResponse<T> 공통 응답 래퍼

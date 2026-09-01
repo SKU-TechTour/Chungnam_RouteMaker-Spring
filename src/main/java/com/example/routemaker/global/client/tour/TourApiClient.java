@@ -14,6 +14,8 @@ import tools.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.function.UnaryOperator;
 
 @Component
@@ -37,6 +39,30 @@ public class TourApiClient {
         return result;
     }
 
+    /**
+     * 한국관광공사 데이터를 저장/캐시하지 않고 요청 시점에 지역기반 API를 호출합니다.
+     */
+    public List<TourPlaceResponse> areaBased(String areaCode, String sigunguCode) {
+        return areaBased(areaCode, sigunguCode, null, 50);
+    }
+
+    public List<TourPlaceResponse> areaBased(String areaCode, String sigunguCode,
+                                             String contentTypeId, int numOfRows) {
+        JsonNode root = get("/areaBasedList2", builder -> {
+            builder.queryParam("areaCode", areaCode).queryParam("sigunguCode", sigunguCode)
+                    .queryParam("arrange", "A").queryParam("numOfRows", numOfRows).queryParam("pageNo", 1);
+            if (StringUtils.hasText(contentTypeId)) {
+                builder.queryParam("contentTypeId", contentTypeId);
+            }
+            return builder;
+        });
+        List<TourPlaceResponse> result = new ArrayList<>();
+        for (JsonNode item : items(root)) {
+            result.add(TourPlaceResponse.from(item));
+        }
+        return result;
+    }
+
     public TourOperatingInfoResponse operatingInfo(String contentId, String contentTypeId) {
         JsonNode root = get("/detailIntro2", builder -> builder
                 .queryParam("contentId", contentId).queryParam("contentTypeId", contentTypeId));
@@ -49,6 +75,16 @@ public class TourApiClient {
         JsonNode root = get("/detailPetTour2", builder -> builder.queryParam("contentId", contentId));
         JsonNode item = items(root).stream().findFirst().orElse(null);
         return item == null ? TourPetInfoResponse.empty(contentId) : TourPetInfoResponse.from(contentId, item);
+    }
+
+    /** 요청마다 반려동물 동반 가능 contentId 목록을 실시간 조회하며 저장하거나 캐시하지 않습니다. */
+    public Set<String> petFriendlyContentIds() {
+        JsonNode root = get("/detailPetTour2", builder -> builder
+                .queryParam("numOfRows", 10000).queryParam("pageNo", 1));
+        return items(root).stream()
+                .map(item -> item.path("contentid").asText())
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private JsonNode get(String path, UnaryOperator<UriBuilder> params) {
