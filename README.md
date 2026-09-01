@@ -113,6 +113,13 @@ docker compose up -d
 ./gradlew bootRun
 ```
 
+Docker Desktop 없이 Chrome 통합 테스트만 할 때는 H2 메모리 DB를 사용하는 `local`
+프로필로 실행할 수 있습니다. 외부 관광·날씨·카카오 API는 이 경우에도 실시간 호출합니다.
+
+```powershell
+.\gradlew.bat bootRun --args="--spring.profiles.active=local"
+```
+
 환경별로 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`를
 지정할 수 있으며, 지정하지 않으면 `docker-compose.yml`의 로컬 기본값을 사용합니다.
 

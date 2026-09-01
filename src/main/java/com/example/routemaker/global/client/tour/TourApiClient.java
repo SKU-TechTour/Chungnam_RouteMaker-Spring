@@ -8,7 +8,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriBuilder;
+import reactor.util.retry.Retry;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
@@ -92,7 +94,22 @@ public class TourApiClient {
         return client.get().uri(builder -> params.apply(builder.path(path)
                         .queryParam("serviceKey", serviceKey).queryParam("MobileOS", "ETC")
                         .queryParam("MobileApp", "ChungnamRouteMaker").queryParam("_type", "json"))
-                .build()).retrieve().bodyToMono(JsonNode.class).block(Duration.ofSeconds(10));
+                .build())
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .timeout(Duration.ofSeconds(10))
+                .retryWhen(Retry.backoff(2, Duration.ofMillis(350))
+                        .maxBackoff(Duration.ofSeconds(2))
+                        .filter(this::isTransientFailure))
+                .block(Duration.ofSeconds(30));
+    }
+
+    private boolean isTransientFailure(Throwable error) {
+        if (error instanceof WebClientResponseException responseError) {
+            return responseError.getStatusCode().value() == 429
+                    || responseError.getStatusCode().is5xxServerError();
+        }
+        return true;
     }
 
     private List<JsonNode> items(JsonNode root) {
