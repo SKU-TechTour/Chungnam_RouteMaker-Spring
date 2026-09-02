@@ -1,5 +1,6 @@
 package com.example.routemaker.global.client.weather;
 
+import com.example.routemaker.domain.course.dto.HourlyWeatherResponse;
 import com.example.routemaker.global.client.weather.dto.WeatherForecastItemResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,7 +14,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class WeatherApiClient {
@@ -42,6 +45,10 @@ public class WeatherApiClient {
     }
 
     public boolean isRainy(String region) {
+        return hourly(region).stream().anyMatch(HourlyWeatherResponse::precipitationExpected);
+    }
+
+    public List<HourlyWeatherResponse> hourly(String region) {
         int[] grid = switch (region) {
             case "GONGJU" -> new int[]{63, 102};
             case "BUYEO" -> new int[]{59, 99};
@@ -57,9 +64,39 @@ public class WeatherApiClient {
         }
         String date = now.format(DateTimeFormatter.BASIC_ISO_DATE);
         String time = "%02d00".formatted(selected);
-        return shortTerm(date, time, grid[0], grid[1]).stream().anyMatch(item ->
-                (item.category().equals("PTY") && !item.value().equals("0"))
-                        || (item.category().equals("POP") && parseInt(item.value()) >= 60));
+        List<WeatherForecastItemResponse> raw = shortTerm(date, time, grid[0], grid[1]);
+        Map<String, MutableHourlyWeather> grouped = new LinkedHashMap<>();
+        for (WeatherForecastItemResponse item : raw) {
+            String key = item.forecastDate() + item.forecastTime();
+            MutableHourlyWeather weather = grouped.computeIfAbsent(
+                    key, ignored -> new MutableHourlyWeather(item.forecastTime()));
+            switch (item.category()) {
+                case "TMP" -> weather.temperature = parseInt(item.value());
+                case "POP" -> weather.precipitationProbability = parseInt(item.value());
+                case "PTY" -> weather.precipitationType = parseInt(item.value());
+                default -> { }
+            }
+        }
+        return grouped.values().stream()
+                .filter(item -> item.temperature != null)
+                .limit(4)
+                .map(item -> new HourlyWeatherResponse(
+                        item.time.substring(0, 2) + ":00",
+                        item.temperature,
+                        item.precipitationProbability,
+                        item.precipitationType > 0 || item.precipitationProbability >= 60))
+                .toList();
+    }
+
+    private static final class MutableHourlyWeather {
+        private final String time;
+        private Integer temperature;
+        private int precipitationProbability;
+        private int precipitationType;
+
+        private MutableHourlyWeather(String time) {
+            this.time = time;
+        }
     }
 
     private int parseInt(String value) {

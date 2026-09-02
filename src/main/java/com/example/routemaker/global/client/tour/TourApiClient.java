@@ -1,6 +1,7 @@
 package com.example.routemaker.global.client.tour;
 
 import com.example.routemaker.global.client.tour.dto.TourOperatingInfoResponse;
+import com.example.routemaker.global.client.tour.dto.TourCommonInfoResponse;
 import com.example.routemaker.global.client.tour.dto.TourPetInfoResponse;
 import com.example.routemaker.global.client.tour.dto.TourPlaceResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -71,6 +72,18 @@ public class TourApiClient {
         JsonNode item = items(root).stream().findFirst().orElseThrow(
                 () -> new IllegalStateException("TourAPI 운영 정보를 찾을 수 없습니다."));
         return TourOperatingInfoResponse.from(contentId, contentTypeId, item);
+    }
+
+    public TourCommonInfoResponse commonInfo(String contentId) {
+        JsonNode root = get("/detailCommon2", builder -> builder
+                .queryParam("contentId", contentId)
+                .queryParam("defaultYN", "Y")
+                .queryParam("firstImageYN", "Y")
+                .queryParam("addrinfoYN", "Y")
+                .queryParam("overviewYN", "Y"));
+        JsonNode item = items(root).stream().findFirst().orElseThrow(
+                () -> new IllegalStateException("TourAPI 소개 정보를 찾을 수 없습니다."));
+        return TourCommonInfoResponse.from(contentId, item);
     }
 
     public TourPetInfoResponse petInfo(String contentId) {

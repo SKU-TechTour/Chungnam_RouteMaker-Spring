@@ -2,6 +2,7 @@ package com.example.routemaker.domain.course.service;
 
 import com.example.routemaker.domain.course.dto.CourseRecommendRequest;
 import com.example.routemaker.domain.course.dto.CourseResponse;
+import com.example.routemaker.domain.course.dto.HourlyWeatherResponse;
 import com.example.routemaker.domain.course.dto.RouteLegResponse;
 import com.example.routemaker.domain.place.dto.PlaceResponse;
 import com.example.routemaker.global.client.kakao.KakaoMobilityApiClient;
@@ -49,7 +50,8 @@ public class CourseService {
     }
 
     private CourseResponse compose(Region region, boolean military, Set<String> concepts, int variant) {
-        boolean rainy = weatherApiClient.isRainy(region.name());
+        List<HourlyWeatherResponse> hourlyWeather = weatherApiClient.hourly(region.name());
+        boolean rainy = hourlyWeather.stream().anyMatch(HourlyWeatherResponse::precipitationExpected);
         String attractionType = rainy ? CULTURAL_FACILITY : TOURIST_ATTRACTION;
 
         List<TourPlaceResponse> attractions = tourApiClient.areaBased(
@@ -85,6 +87,7 @@ public class CourseService {
                 .region(region)
                 .indoor(rainy)
                 .weather(rainy ? "RAINY" : "CLEAR")
+                .hourlyWeather(hourlyWeather)
                 .combo(List.copyOf(combo))
                 .routes(routes)
                 .totalDistanceMeters(totalDistance)

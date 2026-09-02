@@ -33,6 +33,11 @@ public class ExternalApiController {
         return ApiResponse.success(tourApiClient.operatingInfo(contentId, contentTypeId));
     }
 
+    @GetMapping("/tour/common-info")
+    public ApiResponse<?> commonInfo(@RequestParam String contentId) {
+        return ApiResponse.success(tourApiClient.commonInfo(contentId));
+    }
+
     @GetMapping("/tour/pet-info")
     public ApiResponse<?> petInfo(@RequestParam String contentId) {
         return ApiResponse.success(tourApiClient.petInfo(contentId));
