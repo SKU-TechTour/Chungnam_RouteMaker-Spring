@@ -23,6 +23,7 @@ public class PlaceResponse {
     private boolean largeParking;
     private boolean militaryDiscount;
     private String imageUrl;
+    private String scheduledTime;
     private String source;
 
     public static PlaceResponse from(Place place) {
@@ -43,6 +44,12 @@ public class PlaceResponse {
 
     public static PlaceResponse fromTour(TourPlaceResponse place, Region region,
                                          boolean petFriendly, boolean largeParking) {
+        return fromTour(place, region, petFriendly, largeParking, null);
+    }
+
+    public static PlaceResponse fromTour(TourPlaceResponse place, Region region,
+                                         boolean petFriendly, boolean largeParking,
+                                         String scheduledTime) {
         return PlaceResponse.builder()
                 .id(Long.parseLong(place.contentId()))
                 .name(place.name())
@@ -56,6 +63,7 @@ public class PlaceResponse {
                 .largeParking(largeParking)
                 .militaryDiscount(false)
                 .imageUrl(place.imageUrl())
+                .scheduledTime(scheduledTime)
                 .source("TOUR_API_REALTIME")
                 .build();
     }
@@ -70,6 +78,7 @@ public class PlaceResponse {
                 .latitude(36.1119731)
                 .longitude(127.1083526)
                 .largeParking(true)
+                .scheduledTime("13:00 도착")
                 .source("SERVICE_ANCHOR")
                 .build();
     }

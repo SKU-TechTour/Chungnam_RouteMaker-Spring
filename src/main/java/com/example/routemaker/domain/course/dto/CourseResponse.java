@@ -17,6 +17,8 @@ public class CourseResponse {
     private boolean indoor;
     private String weather;
     private List<HourlyWeatherResponse> hourlyWeather;
+    private String recommendedStartTime;
+    private String targetArrivalTime;
     private List<PlaceResponse> combo;
     private List<RouteLegResponse> routes;
     private int totalDistanceMeters;

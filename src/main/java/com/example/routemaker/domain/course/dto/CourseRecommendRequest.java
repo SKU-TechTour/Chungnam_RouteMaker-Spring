@@ -14,6 +14,8 @@ public class CourseRecommendRequest {
 
     private Region region;
     private boolean military;
+    private String journeyType;
+    private String routeTemplate;
     private Set<String> concepts = Set.of();
     private int variant;
 }

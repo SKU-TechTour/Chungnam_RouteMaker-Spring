@@ -2,6 +2,8 @@ package com.example.routemaker.domain.course.controller;
 
 import com.example.routemaker.domain.course.dto.CourseRecommendRequest;
 import com.example.routemaker.domain.course.dto.CourseResponse;
+import com.example.routemaker.domain.course.dto.RoutePreviewRequest;
+import com.example.routemaker.domain.course.dto.RoutePreviewResponse;
 import com.example.routemaker.domain.course.service.CourseService;
 import com.example.routemaker.global.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/courses")
@@ -22,6 +26,17 @@ public class CourseController {
     @PostMapping("/recommend")
     public ApiResponse<CourseResponse> recommendCourse(@RequestBody CourseRecommendRequest request) {
         return ApiResponse.success(courseService.recommendCourse(request));
+    }
+
+    @PostMapping("/recommendations")
+    public ApiResponse<List<CourseResponse>> recommendCourses(
+            @RequestBody CourseRecommendRequest request) {
+        return ApiResponse.success(courseService.recommendCourses(request));
+    }
+
+    @PostMapping("/route-preview")
+    public ApiResponse<RoutePreviewResponse> previewRoute(@RequestBody RoutePreviewRequest request) {
+        return ApiResponse.success(courseService.previewRoute(request));
     }
 
     @GetMapping("/{courseId}/shuffle")

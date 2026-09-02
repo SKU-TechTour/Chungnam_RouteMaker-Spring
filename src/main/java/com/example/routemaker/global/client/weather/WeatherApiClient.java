@@ -54,7 +54,9 @@ public class WeatherApiClient {
             case "BUYEO" -> new int[]{59, 99};
             default -> new int[]{62, 97};
         };
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusMinutes(10);
+        LocalDateTime currentHour = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+                .withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime now = currentHour.minusMinutes(10);
         int[] hours = {2, 5, 8, 11, 14, 17, 20, 23};
         int selected = -1;
         for (int hour : hours) if (hour <= now.getHour()) selected = hour;
@@ -69,7 +71,9 @@ public class WeatherApiClient {
         for (WeatherForecastItemResponse item : raw) {
             String key = item.forecastDate() + item.forecastTime();
             MutableHourlyWeather weather = grouped.computeIfAbsent(
-                    key, ignored -> new MutableHourlyWeather(item.forecastTime()));
+                    key, ignored -> new MutableHourlyWeather(
+                            item.forecastTime(),
+                            LocalDateTime.parse(key, DateTimeFormatter.ofPattern("yyyyMMddHHmm"))));
             switch (item.category()) {
                 case "TMP" -> weather.temperature = parseInt(item.value());
                 case "POP" -> weather.precipitationProbability = parseInt(item.value());
@@ -78,8 +82,8 @@ public class WeatherApiClient {
             }
         }
         return grouped.values().stream()
-                .filter(item -> item.temperature != null)
-                .limit(4)
+                .filter(item -> item.temperature != null && !item.forecastAt.isBefore(currentHour))
+                .limit(8)
                 .map(item -> new HourlyWeatherResponse(
                         item.time.substring(0, 2) + ":00",
                         item.temperature,
@@ -90,12 +94,14 @@ public class WeatherApiClient {
 
     private static final class MutableHourlyWeather {
         private final String time;
+        private final LocalDateTime forecastAt;
         private Integer temperature;
         private int precipitationProbability;
         private int precipitationType;
 
-        private MutableHourlyWeather(String time) {
+        private MutableHourlyWeather(String time, LocalDateTime forecastAt) {
             this.time = time;
+            this.forecastAt = forecastAt;
         }
     }
 
