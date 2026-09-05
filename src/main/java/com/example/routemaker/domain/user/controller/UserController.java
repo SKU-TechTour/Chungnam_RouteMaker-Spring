@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,5 +32,11 @@ public class UserController {
             @RequestBody UserUpdateRequest request
     ) {
         return ApiResponse.success(userService.updateProfile(userDetails.getUsername(), request));
+    }
+
+    @DeleteMapping("/me")
+    public ApiResponse<Void> deleteAccount(@AuthenticationPrincipal UserDetails userDetails) {
+        userService.deleteAccount(userDetails.getUsername());
+        return ApiResponse.success("사용자 데이터가 삭제되었습니다.", null);
     }
 }

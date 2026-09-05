@@ -9,4 +9,6 @@ import java.util.List;
 public interface UserStampRepository extends JpaRepository<UserStamp, Long> {
 
     List<UserStamp> findByUser(User user);
+
+    void deleteByUser(User user);
 }

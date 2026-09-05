@@ -9,4 +9,6 @@ import java.util.List;
 public interface TravelRecordRepository extends JpaRepository<TravelRecord, Long> {
 
     List<TravelRecord> findByUserOrderByCompletedAtDesc(User user);
+
+    void deleteByUser(User user);
 }

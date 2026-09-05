@@ -6,6 +6,7 @@ import com.example.routemaker.domain.user.entity.TravelRecord;
 import com.example.routemaker.domain.user.entity.User;
 import com.example.routemaker.domain.user.repository.TravelRecordRepository;
 import com.example.routemaker.domain.user.repository.UserRepository;
+import com.example.routemaker.domain.reward.repository.UserStampRepository;
 import com.example.routemaker.global.exception.BusinessException;
 import com.example.routemaker.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final TravelRecordRepository travelRecordRepository;
+    private final UserStampRepository userStampRepository;
 
     public MyPageResponse getMyPage(String email) {
         User user = findUserByEmail(email);
@@ -38,6 +40,14 @@ public class UserService {
         User user = findUserByEmail(email);
         // TODO: User 엔티티에 update 메서드 추가 후 반영
         return getMyPage(email);
+    }
+
+    @Transactional
+    public void deleteAccount(String email) {
+        User user = findUserByEmail(email);
+        userStampRepository.deleteByUser(user);
+        travelRecordRepository.deleteByUser(user);
+        userRepository.delete(user);
     }
 
     private User findUserByEmail(String email) {
