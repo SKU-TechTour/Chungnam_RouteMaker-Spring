@@ -24,11 +24,14 @@ import java.util.function.UnaryOperator;
 @Component
 public class TourApiClient {
     private final WebClient client;
+    private final WebClient petClient;
     private final String serviceKey;
 
     public TourApiClient(@Qualifier("tourWebClient") WebClient client,
+                         @Qualifier("petTourWebClient") WebClient petClient,
                          @Value("${external-api.tour.service-key:}") String serviceKey) {
         this.client = client;
+        this.petClient = petClient;
         this.serviceKey = serviceKey;
     }
 
@@ -87,15 +90,18 @@ public class TourApiClient {
     }
 
     public TourPetInfoResponse petInfo(String contentId) {
-        JsonNode root = get("/detailPetTour2", builder -> builder.queryParam("contentId", contentId));
+        JsonNode root = get(petClient, "/detailPetTour2",
+                builder -> builder.queryParam("contentId", contentId));
         JsonNode item = items(root).stream().findFirst().orElse(null);
         return item == null ? TourPetInfoResponse.empty(contentId) : TourPetInfoResponse.from(contentId, item);
     }
 
     /** 요청마다 반려동물 동반 가능 contentId 목록을 실시간 조회하며 저장하거나 캐시하지 않습니다. */
     public Set<String> petFriendlyContentIds() {
-        JsonNode root = get("/detailPetTour2", builder -> builder
-                .queryParam("numOfRows", 10000).queryParam("pageNo", 1));
+        JsonNode root = get(petClient, "/areaBasedList2", builder -> builder
+                .queryParam("areaCode", "34")
+                .queryParam("numOfRows", 1000)
+                .queryParam("pageNo", 1));
         return items(root).stream()
                 .map(item -> item.path("contentid").asText())
                 .filter(StringUtils::hasText)
@@ -103,8 +109,12 @@ public class TourApiClient {
     }
 
     private JsonNode get(String path, UnaryOperator<UriBuilder> params) {
+        return get(client, path, params);
+    }
+
+    private JsonNode get(WebClient webClient, String path, UnaryOperator<UriBuilder> params) {
         requireKey();
-        return client.get().uri(builder -> params.apply(builder.path(path)
+        return webClient.get().uri(builder -> params.apply(builder.path(path)
                         .queryParam("serviceKey", serviceKey).queryParam("MobileOS", "ETC")
                         .queryParam("MobileApp", "ChungnamRouteMaker").queryParam("_type", "json"))
                 .build())

@@ -4,6 +4,8 @@ import com.example.routemaker.domain.course.dto.CourseRecommendRequest;
 import com.example.routemaker.domain.course.dto.CourseResponse;
 import com.example.routemaker.domain.course.dto.HourlyWeatherResponse;
 import com.example.routemaker.domain.course.dto.RouteLegResponse;
+import com.example.routemaker.domain.course.dto.RouteCoordinateResponse;
+import com.example.routemaker.domain.course.dto.RouteGuideResponse;
 import com.example.routemaker.domain.course.dto.RoutePointRequest;
 import com.example.routemaker.domain.course.dto.RoutePreviewRequest;
 import com.example.routemaker.domain.course.dto.RoutePreviewResponse;
@@ -79,7 +81,7 @@ public class CourseService {
         for (int index = 0; index < request.spots().size() - 1; index++) {
             RoutePointRequest origin = request.spots().get(index);
             RoutePointRequest destination = request.spots().get(index + 1);
-            KakaoMobilityApiClient.DrivingRoute route = kakaoMobilityApiClient.directions(
+            KakaoMobilityApiClient.DrivingRoute route = kakaoMobilityApiClient.detailedDirections(
                     origin.longitude(), origin.latitude(),
                     destination.longitude(), destination.latitude());
             routes.add(RouteLegResponse.builder()
@@ -89,6 +91,14 @@ public class CourseService {
                     .durationSeconds(route.durationSeconds())
                     .tollWon(route.tollWon())
                     .taxiFareWon(route.taxiFareWon())
+                    .path(route.path().stream()
+                            .map(point -> new RouteCoordinateResponse(point.latitude(), point.longitude()))
+                            .toList())
+                    .guides(route.guides().stream()
+                            .map(guide -> new RouteGuideResponse(
+                                    guide.instruction(), guide.latitude(), guide.longitude(),
+                                    guide.distanceMeters(), guide.durationSeconds()))
+                            .toList())
                     .source("KAKAO_MOBILITY_REALTIME")
                     .build());
         }

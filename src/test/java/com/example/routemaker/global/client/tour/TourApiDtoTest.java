@@ -15,7 +15,7 @@ class TourApiDtoTest {
     void parsesTourSearchItem() throws Exception {
         JsonNode item = objectMapper.readTree("""
                 {"contentid":"126508","contenttypeid":"12","title":"공산성",
-                 "addr1":"충남 공주시 웅진로 280","firstimage":"https://image.example/gongsanseong.jpg",
+                 "addr1":"충남 공주시 웅진로 280","firstimage":"http://image.example/gongsanseong.jpg",
                  "mapx":"127.1264411","mapy":"36.4631426"}
                 """);
 
@@ -24,6 +24,7 @@ class TourApiDtoTest {
         assertThat(response.name()).isEqualTo("공산성");
         assertThat(response.contentTypeId()).isEqualTo("12");
         assertThat(response.longitude()).isEqualTo(127.1264411);
+        assertThat(response.imageUrl()).isEqualTo("https://image.example/gongsanseong.jpg");
     }
 
     @Test

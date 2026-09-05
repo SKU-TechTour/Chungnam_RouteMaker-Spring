@@ -3,6 +3,8 @@ package com.example.routemaker.domain.course.dto;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
+
 @Getter
 @Builder
 public class RouteLegResponse {
@@ -13,4 +15,6 @@ public class RouteLegResponse {
     private int tollWon;
     private int taxiFareWon;
     private String source;
+    private List<RouteCoordinateResponse> path;
+    private List<RouteGuideResponse> guides;
 }

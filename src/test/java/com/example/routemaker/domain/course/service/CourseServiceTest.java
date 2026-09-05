@@ -137,8 +137,12 @@ class CourseServiceTest {
 
     @Test
     void recalculatesTwoRouteLegsForThreeSelectedPlaces() {
-        when(kakaoMobilityApiClient.directions(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
-                .thenReturn(new KakaoMobilityApiClient.DrivingRoute(2500, 300, 0, 0));
+        when(kakaoMobilityApiClient.detailedDirections(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(new KakaoMobilityApiClient.DrivingRoute(
+                        2500, 300, 0, 0,
+                        List.of(new KakaoMobilityApiClient.RouteCoordinate(36.1, 127.1)),
+                        List.of(new KakaoMobilityApiClient.RouteGuide(
+                                "오른쪽 방향", 36.1, 127.1, 300, 40))));
 
         var response = courseService.previewRoute(new RoutePreviewRequest(List.of(
                 new RoutePointRequest(1L, 36.1, 127.1),
@@ -149,6 +153,9 @@ class CourseServiceTest {
         assertThat(response.routes()).hasSize(2);
         assertThat(response.totalDistanceMeters()).isEqualTo(5000);
         assertThat(response.totalDurationSeconds()).isEqualTo(600);
+        assertThat(response.routes().get(0).getPath()).hasSize(1);
+        assertThat(response.routes().get(0).getGuides().get(0).instruction())
+                .isEqualTo("오른쪽 방향");
     }
 
     private TourPlaceResponse place(String id, String type, String category, String name,

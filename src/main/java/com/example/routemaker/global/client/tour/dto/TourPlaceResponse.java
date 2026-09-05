@@ -17,8 +17,14 @@ public record TourPlaceResponse(
                 item.path("contentid").asText(), item.path("contenttypeid").asText(),
                 item.path("cat3").asText(),
                 item.path("title").asText(), item.path("addr1").asText(),
-                item.path("firstimage").asText(), item.path("mapx").asDouble(),
+                secureImageUrl(item.path("firstimage").asText()), item.path("mapx").asDouble(),
                 item.path("mapy").asDouble()
         );
+    }
+
+    private static String secureImageUrl(String imageUrl) {
+        return imageUrl.startsWith("http://")
+                ? "https://" + imageUrl.substring("http://".length())
+                : imageUrl;
     }
 }

@@ -16,10 +16,16 @@ public record TourCommonInfoResponse(
                 contentId,
                 item.path("title").asText(),
                 item.path("addr1").asText(),
-                item.path("firstimage").asText(),
+                secureImageUrl(item.path("firstimage").asText()),
                 item.path("overview").asText(),
                 item.path("homepage").asText(),
                 item.path("tel").asText()
         );
+    }
+
+    private static String secureImageUrl(String imageUrl) {
+        return imageUrl.startsWith("http://")
+                ? "https://" + imageUrl.substring("http://".length())
+                : imageUrl;
     }
 }

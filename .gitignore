@@ -43,3 +43,4 @@ replay_pid*
 # Firebase Admin private credentials (never commit)
 firebase-service-account*.json
 serviceAccountKey.json
+*service-account*.json
