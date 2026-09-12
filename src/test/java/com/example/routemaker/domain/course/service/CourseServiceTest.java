@@ -158,6 +158,31 @@ class CourseServiceTest {
                 .isEqualTo("오른쪽 방향");
     }
 
+    @Test
+    void keepsCourseAvailableWhenWeatherAndKakaoTemporarilyFail() {
+        CourseRecommendRequest request = new CourseRecommendRequest();
+        request.setRegion(Region.GONGJU);
+
+        when(weatherApiClient.hourly("GONGJU"))
+                .thenThrow(new IllegalStateException("weather timeout"));
+        when(tourApiClient.areaBased("34", "1", "12", 80))
+                .thenReturn(List.of(place("100", "12", "A02010100", "공산성", 127.1, 36.4)));
+        when(tourApiClient.areaBased("34", "1", "39", 100))
+                .thenReturn(List.of(
+                        place("200", "39", "A05020100", "공주식당", 127.2, 36.41),
+                        place("300", "39", "A05020900", "공주카페", 127.3, 36.42)));
+        when(kakaoMobilityApiClient.directions(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenThrow(new IllegalStateException("mobility timeout"));
+
+        CourseResponse response = courseService.recommendCourse(request);
+
+        assertThat(response.getCombo()).hasSize(3);
+        assertThat(response.getHourlyWeather()).isEmpty();
+        assertThat(response.getRoutes()).allMatch(route ->
+                "LOCAL_DISTANCE_FALLBACK".equals(route.getSource()));
+        assertThat(response.getTotalDistanceMeters()).isPositive();
+    }
+
     private TourPlaceResponse place(String id, String type, String category, String name,
                                     double longitude, double latitude) {
         return new TourPlaceResponse(id, type, category, name, "충남", "", longitude, latitude);

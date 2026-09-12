@@ -35,7 +35,10 @@ public class WeatherApiClient {
                         .queryParam("serviceKey", serviceKey).queryParam("pageNo", 1).queryParam("numOfRows", 1000)
                         .queryParam("dataType", "JSON").queryParam("base_date", baseDate)
                         .queryParam("base_time", baseTime).queryParam("nx", nx).queryParam("ny", ny).build())
-                .retrieve().bodyToMono(JsonNode.class).block(Duration.ofSeconds(10));
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .timeout(Duration.ofSeconds(5))
+                .block(Duration.ofSeconds(6));
         List<WeatherForecastItemResponse> result = new ArrayList<>();
         if (root == null) return result;
         for (JsonNode item : root.path("response").path("body").path("items").path("item")) {

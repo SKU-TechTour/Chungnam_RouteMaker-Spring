@@ -101,9 +101,10 @@ public class CourseService {
         for (int index = 0; index < request.spots().size() - 1; index++) {
             RoutePointRequest origin = request.spots().get(index);
             RoutePointRequest destination = request.spots().get(index + 1);
-            KakaoMobilityApiClient.DrivingRoute route = kakaoMobilityApiClient.detailedDirections(
+            ResolvedRoute resolved = resolveRoute(
                     origin.longitude(), origin.latitude(),
-                    destination.longitude(), destination.latitude());
+                    destination.longitude(), destination.latitude(), true);
+            KakaoMobilityApiClient.DrivingRoute route = resolved.route();
             routes.add(RouteLegResponse.builder()
                     .originPlaceId(origin.id())
                     .destinationPlaceId(destination.id())
@@ -119,13 +120,16 @@ public class CourseService {
                                     guide.instruction(), guide.latitude(), guide.longitude(),
                                     guide.distanceMeters(), guide.durationSeconds()))
                             .toList())
-                    .source("KAKAO_MOBILITY_REALTIME")
+                    .source(resolved.source())
                     .build());
         }
         int distance = routes.stream().mapToInt(RouteLegResponse::getDistanceMeters).sum();
         int duration = routes.stream().mapToInt(RouteLegResponse::getDurationSeconds).sum();
-        return new RoutePreviewResponse(List.copyOf(routes), distance, duration,
-                "KAKAO_MOBILITY_REALTIME");
+        String source = routes.stream().allMatch(route ->
+                "KAKAO_MOBILITY_REALTIME".equals(route.getSource()))
+                ? "KAKAO_MOBILITY_REALTIME"
+                : "KAKAO_MOBILITY_REALTIME_OR_LOCAL_DISTANCE_FALLBACK";
+        return new RoutePreviewResponse(List.copyOf(routes), distance, duration, source);
     }
 
     private CourseResponse compose(Region region, boolean military, Set<String> concepts,
@@ -135,7 +139,13 @@ public class CourseService {
 
     private PreparedCourseData prepare(Region region, boolean military, Set<String> concepts,
                                        String routeTemplate) {
-        List<HourlyWeatherResponse> hourlyWeather = weatherApiClient.hourly(region.name());
+        List<HourlyWeatherResponse> hourlyWeather;
+        try {
+            hourlyWeather = weatherApiClient.hourly(region.name());
+        } catch (RuntimeException ignored) {
+            // 날씨 제공기관이 잠시 응답하지 않아도 핵심 TourAPI 코스는 제공한다.
+            hourlyWeather = List.of();
+        }
         boolean rainy = hourlyWeather.stream().anyMatch(HourlyWeatherResponse::precipitationExpected);
         String attractionType = rainy ? CULTURAL_FACILITY : TOURIST_ATTRACTION;
 
@@ -286,6 +296,8 @@ public class CourseService {
         List<RouteLegResponse> routes = buildRoutes(combo);
         int totalDistance = routes.stream().mapToInt(RouteLegResponse::getDistanceMeters).sum();
         int totalDuration = routes.stream().mapToInt(RouteLegResponse::getDurationSeconds).sum();
+        boolean hasRouteFallback = routes.stream().anyMatch(route ->
+                "LOCAL_DISTANCE_FALLBACK".equals(route.getSource()));
         long id = (region.ordinal() + 1L) * 1000L + Math.floorMod(variant, 1000);
         String recommendedStartTime = null;
         String targetArrivalTime = null;
@@ -318,7 +330,12 @@ public class CourseService {
                 .routes(routes)
                 .totalDistanceMeters(totalDistance)
                 .totalDurationSeconds(totalDuration)
-                .source("TOUR_API_REALTIME+WEATHER_API_REALTIME+KAKAO_MOBILITY_REALTIME")
+                .source("TOUR_API_REALTIME+"
+                        + (hourlyWeather.isEmpty() ? "WEATHER_UNAVAILABLE" : "WEATHER_API_REALTIME")
+                        + "+"
+                        + (hasRouteFallback
+                                ? "KAKAO_MOBILITY_OR_LOCAL_DISTANCE_FALLBACK"
+                                : "KAKAO_MOBILITY_REALTIME"))
                 .build();
     }
 
@@ -339,9 +356,10 @@ public class CourseService {
         for (int index = 0; index < combo.size() - 1; index++) {
             PlaceResponse origin = combo.get(index);
             PlaceResponse destination = combo.get(index + 1);
-            KakaoMobilityApiClient.DrivingRoute route = kakaoMobilityApiClient.directions(
+            ResolvedRoute resolved = resolveRoute(
                     origin.getLongitude(), origin.getLatitude(),
-                    destination.getLongitude(), destination.getLatitude());
+                    destination.getLongitude(), destination.getLatitude(), false);
+            KakaoMobilityApiClient.DrivingRoute route = resolved.route();
             routes.add(RouteLegResponse.builder()
                     .originPlaceId(origin.getId())
                     .destinationPlaceId(destination.getId())
@@ -349,11 +367,55 @@ public class CourseService {
                     .durationSeconds(route.durationSeconds())
                     .tollWon(route.tollWon())
                     .taxiFareWon(route.taxiFareWon())
-                    .source("KAKAO_MOBILITY_REALTIME")
+                    .source(resolved.source())
                     .build());
         }
         return List.copyOf(routes);
     }
+
+    private ResolvedRoute resolveRoute(double originLongitude, double originLatitude,
+                                       double destinationLongitude, double destinationLatitude,
+                                       boolean includeDetails) {
+        try {
+            KakaoMobilityApiClient.DrivingRoute route = includeDetails
+                    ? kakaoMobilityApiClient.detailedDirections(
+                            originLongitude, originLatitude,
+                            destinationLongitude, destinationLatitude)
+                    : kakaoMobilityApiClient.directions(
+                            originLongitude, originLatitude,
+                            destinationLongitude, destinationLatitude);
+            return new ResolvedRoute(route, "KAKAO_MOBILITY_REALTIME");
+        } catch (RuntimeException ignored) {
+            int distance = straightLineDistanceMeters(
+                    originLatitude, originLongitude,
+                    destinationLatitude, destinationLongitude);
+            // 도로 경로 API가 일시 실패한 경우 평균 시속 35km를 적용한 안내용
+            // 추정치로 화면 전체의 500 오류를 막는다.
+            int duration = Math.max(60, (int) Math.ceil(distance / (35_000d / 3_600d)));
+            List<KakaoMobilityApiClient.RouteCoordinate> path = includeDetails
+                    ? List.of(
+                            new KakaoMobilityApiClient.RouteCoordinate(originLatitude, originLongitude),
+                            new KakaoMobilityApiClient.RouteCoordinate(destinationLatitude, destinationLongitude))
+                    : List.of();
+            return new ResolvedRoute(
+                    new KakaoMobilityApiClient.DrivingRoute(
+                            distance, duration, 0, 0, path, List.of()),
+                    "LOCAL_DISTANCE_FALLBACK");
+        }
+    }
+
+    private int straightLineDistanceMeters(double lat1, double lng1,
+                                           double lat2, double lng2) {
+        double earthRadius = 6_371_000d;
+        double latitudeDelta = Math.toRadians(lat2 - lat1);
+        double longitudeDelta = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(longitudeDelta / 2) * Math.sin(longitudeDelta / 2);
+        return (int) Math.round(earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    private record ResolvedRoute(KakaoMobilityApiClient.DrivingRoute route, String source) {}
 
     private TourPlaceResponse pick(List<TourPlaceResponse> places, int variant, String label) {
         List<TourPlaceResponse> usable = places.stream()
