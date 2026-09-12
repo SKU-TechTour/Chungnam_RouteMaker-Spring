@@ -17,15 +17,22 @@ import com.example.routemaker.global.client.weather.WeatherApiClient;
 import com.example.routemaker.global.common.enums.Region;
 import com.example.routemaker.global.exception.BusinessException;
 import com.example.routemaker.global.exception.ErrorCode;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -36,10 +43,21 @@ public class CourseService {
     private static final String CULTURAL_FACILITY = "14";
     private static final String RESTAURANT = "39";
     private static final String ACCOMMODATION = "32";
+    private static final AtomicInteger API_THREAD_SEQUENCE = new AtomicInteger();
 
     private final TourApiClient tourApiClient;
     private final WeatherApiClient weatherApiClient;
     private final KakaoMobilityApiClient kakaoMobilityApiClient;
+    private final ExecutorService externalApiExecutor = Executors.newFixedThreadPool(6, task -> {
+        Thread thread = new Thread(task, "course-api-" + API_THREAD_SEQUENCE.incrementAndGet());
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    @PreDestroy
+    void shutdownExternalApiExecutor() {
+        externalApiExecutor.shutdown();
+    }
 
     public CourseResponse recommendCourse(CourseRecommendRequest request) {
         if (request.getRegion() == null) {
@@ -57,7 +75,9 @@ public class CourseService {
                 request.getRegion(), request.isMilitary(), request.getConcepts(),
                 request.getRouteTemplate());
         return java.util.stream.IntStream.range(0, 5)
-                .mapToObj(variant -> buildCourse(prepared, variant, request.getRouteTemplate()))
+                .mapToObj(variant -> async(() ->
+                        buildCourse(prepared, variant, request.getRouteTemplate())))
+                .map(this::await)
                 .sorted(Comparator.comparingInt(CourseResponse::getTotalDurationSeconds))
                 .toList();
     }
@@ -119,31 +139,47 @@ public class CourseService {
         boolean rainy = hourlyWeather.stream().anyMatch(HourlyWeatherResponse::precipitationExpected);
         String attractionType = rainy ? CULTURAL_FACILITY : TOURIST_ATTRACTION;
 
-        List<TourPlaceResponse> attractions = tourApiClient.areaBased(
-                CHUNGNAM_AREA_CODE, sigunguCode(region), attractionType, 80);
+        CompletableFuture<List<TourPlaceResponse>> attractionsFuture = async(() ->
+                tourApiClient.areaBased(
+                        CHUNGNAM_AREA_CODE, sigunguCode(region), attractionType, 80));
+        CompletableFuture<List<TourPlaceResponse>> diningFuture = async(() ->
+                tourApiClient.areaBased(
+                        CHUNGNAM_AREA_CODE, sigunguCode(region), RESTAURANT, 100));
+
+        List<TourPlaceResponse> attractions = await(attractionsFuture);
         if (attractions.isEmpty()) {
             attractions = tourApiClient.areaBased(
                     CHUNGNAM_AREA_CODE, sigunguCode(region), TOURIST_ATTRACTION, 80);
         }
-        List<TourPlaceResponse> dining = tourApiClient.areaBased(
-                CHUNGNAM_AREA_CODE, sigunguCode(region), RESTAURANT, 100);
+        List<TourPlaceResponse> dining = await(diningFuture);
         List<TourPlaceResponse> accommodations = List.of();
 
         if ("COMPANION_OVERNIGHT_A".equals(routeTemplate)) {
+            CompletableFuture<List<TourPlaceResponse>> buyeoAttractionsFuture = async(() ->
+                    tourApiClient.areaBased(
+                            CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), TOURIST_ATTRACTION, 80));
+            CompletableFuture<List<TourPlaceResponse>> gongjuAttractionsFuture = async(() ->
+                    tourApiClient.areaBased(
+                            CHUNGNAM_AREA_CODE, sigunguCode(Region.GONGJU), TOURIST_ATTRACTION, 80));
+            CompletableFuture<List<TourPlaceResponse>> buyeoDiningFuture = async(() ->
+                    tourApiClient.areaBased(
+                            CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), RESTAURANT, 100));
+            CompletableFuture<List<TourPlaceResponse>> gongjuDiningFuture = async(() ->
+                    tourApiClient.areaBased(
+                            CHUNGNAM_AREA_CODE, sigunguCode(Region.GONGJU), RESTAURANT, 100));
+            CompletableFuture<List<TourPlaceResponse>> accommodationsFuture = async(() ->
+                    tourApiClient.areaBased(
+                            CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), ACCOMMODATION, 80));
+
             List<TourPlaceResponse> combinedAttractions = new ArrayList<>(attractions);
-            combinedAttractions.addAll(tourApiClient.areaBased(
-                    CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), TOURIST_ATTRACTION, 80));
-            combinedAttractions.addAll(tourApiClient.areaBased(
-                    CHUNGNAM_AREA_CODE, sigunguCode(Region.GONGJU), TOURIST_ATTRACTION, 80));
+            combinedAttractions.addAll(await(buyeoAttractionsFuture));
+            combinedAttractions.addAll(await(gongjuAttractionsFuture));
             attractions = combinedAttractions;
             List<TourPlaceResponse> combinedDining = new ArrayList<>(dining);
-            combinedDining.addAll(tourApiClient.areaBased(
-                    CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), RESTAURANT, 100));
-            combinedDining.addAll(tourApiClient.areaBased(
-                    CHUNGNAM_AREA_CODE, sigunguCode(Region.GONGJU), RESTAURANT, 100));
+            combinedDining.addAll(await(buyeoDiningFuture));
+            combinedDining.addAll(await(gongjuDiningFuture));
             dining = combinedDining;
-            accommodations = tourApiClient.areaBased(
-                    CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), ACCOMMODATION, 80);
+            accommodations = await(accommodationsFuture);
         } else if ("COMPANION_OVERNIGHT_B".equals(routeTemplate)) {
             accommodations = tourApiClient.areaBased(
                     CHUNGNAM_AREA_CODE, sigunguCode(Region.NONSAN), ACCOMMODATION, 80);
@@ -158,6 +194,21 @@ public class CourseService {
         return new PreparedCourseData(
                 region, military, concepts == null ? Set.of() : concepts,
                 rainy, hourlyWeather, attractions, dining, accommodations);
+    }
+
+    private <T> CompletableFuture<T> async(Supplier<T> supplier) {
+        return CompletableFuture.supplyAsync(supplier, externalApiExecutor);
+    }
+
+    private <T> T await(CompletableFuture<T> future) {
+        try {
+            return future.join();
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw exception;
+        }
     }
 
     private CourseResponse buildCourse(PreparedCourseData prepared, int variant,
