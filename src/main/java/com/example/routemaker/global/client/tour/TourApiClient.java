@@ -79,11 +79,9 @@ public class TourApiClient {
 
     public TourCommonInfoResponse commonInfo(String contentId) {
         JsonNode root = get("/detailCommon2", builder -> builder
-                .queryParam("contentId", contentId)
-                .queryParam("defaultYN", "Y")
-                .queryParam("firstImageYN", "Y")
-                .queryParam("addrinfoYN", "Y")
-                .queryParam("overviewYN", "Y"));
+                // KorService2의 현재 detailCommon2는 구형 *YN 파라미터를 받지 않고
+                // contentId만으로 title/address/image/overview 전체를 반환합니다.
+                .queryParam("contentId", contentId));
         JsonNode item = items(root).stream().findFirst().orElseThrow(
                 () -> new IllegalStateException("TourAPI 소개 정보를 찾을 수 없습니다."));
         return TourCommonInfoResponse.from(contentId, item);

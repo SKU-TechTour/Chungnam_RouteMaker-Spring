@@ -178,6 +178,10 @@ public class CourseService {
         if (cafes.isEmpty()) cafes = dining;
         TourPlaceResponse restaurant = pick(restaurants.isEmpty() ? dining : restaurants, variant, "맛집");
         TourPlaceResponse cafe = pick(cafes.isEmpty() ? dining : cafes, variant + 1, "카페");
+        TourPlaceResponse anotherRestaurant = pick(
+                restaurants.isEmpty() ? dining : restaurants, variant + 1, "맛집");
+        TourPlaceResponse anotherCafe = pick(
+                cafes.isEmpty() ? dining : cafes, variant + 2, "카페");
 
         String template = requestedTemplate == null || requestedTemplate.isBlank()
                 ? (military ? "LEGACY_MILITARY" : "TRAVELER_FLEX")
@@ -214,8 +218,18 @@ public class CourseService {
                     variant % 2 == 0 ? restaurant : cafe, region, false, false));
         } else {
             combo.add(PlaceResponse.fromTour(attraction, region, false, false));
-            combo.add(PlaceResponse.fromTour(restaurant, region, false, false));
-            combo.add(PlaceResponse.fromTour(cafe, region, false, false));
+            boolean cafeFocused = concepts.contains("cafe") && !concepts.contains("food");
+            boolean foodFocused = concepts.contains("food") && !concepts.contains("cafe");
+            if (cafeFocused) {
+                combo.add(PlaceResponse.fromTour(cafe, region, false, false));
+                combo.add(PlaceResponse.fromTour(anotherCafe, region, false, false));
+            } else if (foodFocused) {
+                combo.add(PlaceResponse.fromTour(restaurant, region, false, false));
+                combo.add(PlaceResponse.fromTour(anotherRestaurant, region, false, false));
+            } else {
+                combo.add(PlaceResponse.fromTour(restaurant, region, false, false));
+                combo.add(PlaceResponse.fromTour(cafe, region, false, false));
+            }
         }
 
         List<RouteLegResponse> routes = buildRoutes(combo);
@@ -348,9 +362,18 @@ public class CourseService {
         if (rainy) {
             return regionName + " 비 오는 날 실내 맞춤 코스";
         }
-        return concepts != null && concepts.contains("history")
-                ? regionName + " 역사 중심 맞춤 코스"
-                : regionName + " 취향 맞춤 코스";
+        if (concepts != null) {
+            if (concepts.contains("history")) return regionName + " 역사 중심 맞춤 코스";
+            if (concepts.contains("activity")) return regionName + " 액티비티 중심 맞춤 코스";
+            if (concepts.contains("healing")) return regionName + " 힐링 중심 맞춤 코스";
+            if (concepts.contains("food") && !concepts.contains("cafe")) {
+                return regionName + " 맛집 중심 맞춤 코스";
+            }
+            if (concepts.contains("cafe") && !concepts.contains("food")) {
+                return regionName + " 카페 중심 맞춤 코스";
+            }
+        }
+        return regionName + " 취향 맞춤 코스";
     }
 
     private PlaceResponse place(TourPlaceResponse source, Region fallback, String schedule) {

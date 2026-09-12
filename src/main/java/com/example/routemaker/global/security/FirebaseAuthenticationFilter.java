@@ -31,6 +31,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         String method = request.getMethod();
         return ("GET".equals(method) && path.equals("/api/places"))
                 || ("POST".equals(method) && path.equals("/api/courses/recommend"))
+                || ("POST".equals(method) && path.equals("/api/courses/recommendations"))
                 || ("GET".equals(method) && path.matches("/api/courses/[^/]+/shuffle"))
                 || ("GET".equals(method) && path.startsWith("/api/military/enlistment-schedules"));
     }
