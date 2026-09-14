@@ -112,9 +112,7 @@ public class CourseService {
                     .durationSeconds(route.durationSeconds())
                     .tollWon(route.tollWon())
                     .taxiFareWon(route.taxiFareWon())
-                    .path(route.path().stream()
-                            .map(point -> new RouteCoordinateResponse(point.latitude(), point.longitude()))
-                            .toList())
+                    .path(simplifyRoutePath(route.path()))
                     .guides(route.guides().stream()
                             .map(guide -> new RouteGuideResponse(
                                     guide.instruction(), guide.latitude(), guide.longitude(),
@@ -130,6 +128,25 @@ public class CourseService {
                 ? "KAKAO_MOBILITY_REALTIME"
                 : "KAKAO_MOBILITY_REALTIME_OR_LOCAL_DISTANCE_FALLBACK";
         return new RoutePreviewResponse(List.copyOf(routes), distance, duration, source);
+    }
+
+    private List<RouteCoordinateResponse> simplifyRoutePath(
+            List<KakaoMobilityApiClient.RouteCoordinate> path) {
+        final int maximumPointsPerLeg = 240;
+        if (path.size() <= maximumPointsPerLeg) {
+            return path.stream()
+                    .map(point -> new RouteCoordinateResponse(point.latitude(), point.longitude()))
+                    .toList();
+        }
+        int stride = (int) Math.ceil((double) path.size() / (maximumPointsPerLeg - 1));
+        List<RouteCoordinateResponse> reduced = new ArrayList<>();
+        for (int index = 0; index < path.size() - 1; index += stride) {
+            var point = path.get(index);
+            reduced.add(new RouteCoordinateResponse(point.latitude(), point.longitude()));
+        }
+        var last = path.get(path.size() - 1);
+        reduced.add(new RouteCoordinateResponse(last.latitude(), last.longitude()));
+        return List.copyOf(reduced);
     }
 
     private CourseResponse compose(Region region, boolean military, Set<String> concepts,
