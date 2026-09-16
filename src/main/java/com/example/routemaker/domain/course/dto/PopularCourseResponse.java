@@ -9,6 +9,9 @@ public record PopularCourseResponse(
         List<BookmarkSpotRequest> spots,
         int totalDistanceMeters,
         int totalDurationSeconds,
-        long bookmarkCount
+        long bookmarkCount,
+        double regionVisitorCount,
+        double popularityScore,
+        String rankingBasis
 ) {
 }

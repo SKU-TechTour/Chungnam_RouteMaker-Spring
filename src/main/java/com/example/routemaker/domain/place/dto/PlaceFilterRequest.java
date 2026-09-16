@@ -16,5 +16,6 @@ public class PlaceFilterRequest {
     private boolean strollerAccessible;
     private boolean petFriendly;
     private boolean largeParking;
+    private boolean movementConvenience;
     private boolean militaryOnly;
 }

@@ -5,7 +5,9 @@ import com.example.routemaker.domain.place.repository.PlaceRepository;
 import com.example.routemaker.global.client.kakao.KakaoLocalApiClient;
 import com.example.routemaker.global.client.kakao.KakaoMobilityApiClient;
 import com.example.routemaker.global.client.tour.TourApiClient;
+import com.example.routemaker.global.client.tour.TourEnrichmentClient;
 import com.example.routemaker.global.client.weather.WeatherApiClient;
+import com.example.routemaker.global.common.enums.Region;
 import com.example.routemaker.global.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ExternalApiController {
     private final TourApiClient tourApiClient;
+    private final TourEnrichmentClient tourEnrichmentClient;
     private final WeatherApiClient weatherApiClient;
     private final KakaoLocalApiClient kakaoLocalApiClient;
     private final KakaoMobilityApiClient kakaoMobilityApiClient;
@@ -41,6 +44,26 @@ public class ExternalApiController {
     @GetMapping("/tour/pet-info")
     public ApiResponse<?> petInfo(@RequestParam String contentId) {
         return ApiResponse.success(tourApiClient.petInfo(contentId));
+    }
+
+    @GetMapping("/tour/accessibility")
+    public ApiResponse<?> accessibility(@RequestParam String contentId) {
+        return ApiResponse.success(tourEnrichmentClient.accessibility(contentId));
+    }
+
+    @GetMapping("/tour/congestion")
+    public ApiResponse<?> congestion(@RequestParam Region region, @RequestParam String attractionName) {
+        return ApiResponse.success(tourEnrichmentClient.congestion(region, attractionName));
+    }
+
+    @GetMapping("/tour/audio-guide")
+    public ApiResponse<?> audioGuide(@RequestParam String attractionName) {
+        return ApiResponse.success(tourEnrichmentClient.audioGuide(attractionName));
+    }
+
+    @GetMapping("/tour/region-visitors")
+    public ApiResponse<?> regionVisitors(@RequestParam Region region) {
+        return ApiResponse.success(tourEnrichmentClient.regionVisitors(region));
     }
 
     @GetMapping("/weather/short-term")

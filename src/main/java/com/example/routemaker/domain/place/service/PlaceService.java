@@ -3,6 +3,7 @@ package com.example.routemaker.domain.place.service;
 import com.example.routemaker.domain.place.dto.PlaceFilterRequest;
 import com.example.routemaker.domain.place.dto.PlaceResponse;
 import com.example.routemaker.global.client.tour.TourApiClient;
+import com.example.routemaker.global.client.tour.TourEnrichmentClient;
 import com.example.routemaker.global.client.tour.dto.TourOperatingInfoResponse;
 import com.example.routemaker.global.client.tour.dto.TourPlaceResponse;
 import com.example.routemaker.global.common.enums.Region;
@@ -17,6 +18,7 @@ public class PlaceService {
 
     private static final String CHUNGNAM_AREA_CODE = "34";
     private final TourApiClient tourApiClient;
+    private final TourEnrichmentClient tourEnrichmentClient;
 
     public List<PlaceResponse> searchPlaces(PlaceFilterRequest request) {
         Region region = request.getRegion() == null ? Region.NONSAN : request.getRegion();
@@ -27,12 +29,17 @@ public class PlaceService {
         Set<String> petFriendlyIds = request.isPetFriendly()
                 ? tourApiClient.petFriendlyContentIds()
                 : Set.of();
+        Set<String> accessibleIds = request.isMovementConvenience()
+                ? tourEnrichmentClient.accessibleContentIds(region)
+                : Set.of();
 
         return tourApiClient.areaBased(CHUNGNAM_AREA_CODE, sigunguCode(region)).stream()
                 .map(place -> enrich(place, region, request, petFriendlyIds))
                 .filter(response -> request.getCategory() == null || response.getCategory() == request.getCategory())
                 .filter(response -> !request.isPetFriendly() || response.isPetFriendly())
                 .filter(response -> !request.isLargeParking() || response.isLargeParking())
+                .filter(response -> !request.isMovementConvenience()
+                        || accessibleIds.contains(String.valueOf(response.getId())))
                 .toList();
     }
 

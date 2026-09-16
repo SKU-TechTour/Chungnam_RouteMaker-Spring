@@ -34,6 +34,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/military/enlistment-schedules/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/places").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/external/tour/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/courses/recommend").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/courses/recommendations").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/courses/route-preview").permitAll()
