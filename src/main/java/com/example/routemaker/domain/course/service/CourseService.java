@@ -82,7 +82,7 @@ public class CourseService {
                 request.getRouteTemplate());
         return java.util.stream.IntStream.range(0, 5)
                 .mapToObj(variant -> async(() ->
-                        buildCourse(prepared, variant, request.getRouteTemplate())))
+                        buildCourse(prepared, variant, request.getRouteTemplate(), false)))
                 .map(this::await)
                 .sorted(Comparator.comparingInt(CourseResponse::getTotalDurationSeconds))
                 .toList();
@@ -237,18 +237,33 @@ public class CourseService {
 
     private CourseResponse compose(Region region, boolean military, Set<String> concepts,
                                    int variant, String routeTemplate) {
-        return buildCourse(prepare(region, military, concepts, routeTemplate), variant, routeTemplate);
+        return buildCourse(
+                prepare(region, military, concepts, routeTemplate), variant, routeTemplate, true);
     }
 
     private PreparedCourseData prepare(Region region, boolean military, Set<String> concepts,
                                        String routeTemplate) {
-        List<HourlyWeatherResponse> hourlyWeather;
-        try {
-            hourlyWeather = weatherApiClient.hourly(region.name());
-        } catch (RuntimeException ignored) {
-            // 날씨 제공기관이 잠시 응답하지 않아도 핵심 TourAPI 코스는 제공한다.
-            hourlyWeather = List.of();
-        }
+        // 날씨 결과를 기다린 뒤 관광 API를 호출하면 두 외부 API의 지연시간이
+        // 그대로 합산된다. 홈 진입에서는 실내·야외 후보와 식당, 날씨를 동시에
+        // 조회한 뒤 예보에 맞는 후보만 선택한다.
+        CompletableFuture<List<HourlyWeatherResponse>> weatherFuture = async(() -> {
+            try {
+                return weatherApiClient.hourly(region.name());
+            } catch (RuntimeException ignored) {
+                return List.of();
+            }
+        });
+        CompletableFuture<List<TourPlaceResponse>> outdoorAttractionsFuture = async(() ->
+                tourApiClient.areaBased(
+                        CHUNGNAM_AREA_CODE, sigunguCode(region), TOURIST_ATTRACTION, 80));
+        CompletableFuture<List<TourPlaceResponse>> indoorAttractionsFuture = async(() ->
+                tourApiClient.areaBased(
+                        CHUNGNAM_AREA_CODE, sigunguCode(region), CULTURAL_FACILITY, 80));
+        CompletableFuture<List<TourPlaceResponse>> diningFuture = async(() ->
+                tourApiClient.areaBased(
+                        CHUNGNAM_AREA_CODE, sigunguCode(region), RESTAURANT, 100));
+
+        List<HourlyWeatherResponse> hourlyWeather = await(weatherFuture);
         List<HourlyWeatherResponse> decisionWindow = hourlyWeather.stream()
                 .limit(WEATHER_DECISION_HOURS)
                 .toList();
@@ -259,15 +274,8 @@ public class CourseService {
                 .max()
                 .orElse(0);
         String attractionType = rainy ? CULTURAL_FACILITY : TOURIST_ATTRACTION;
-
-        CompletableFuture<List<TourPlaceResponse>> attractionsFuture = async(() ->
-                tourApiClient.areaBased(
-                        CHUNGNAM_AREA_CODE, sigunguCode(region), attractionType, 80));
-        CompletableFuture<List<TourPlaceResponse>> diningFuture = async(() ->
-                tourApiClient.areaBased(
-                        CHUNGNAM_AREA_CODE, sigunguCode(region), RESTAURANT, 100));
-
-        List<TourPlaceResponse> attractions = await(attractionsFuture);
+        List<TourPlaceResponse> attractions = awaitOrEmpty(
+                rainy ? indoorAttractionsFuture : outdoorAttractionsFuture);
         if (rainy) {
             List<TourPlaceResponse> verifiedIndoor = attractions.stream()
                     .filter(this::isIndoorAttraction)
@@ -275,10 +283,10 @@ public class CourseService {
             if (!verifiedIndoor.isEmpty()) attractions = verifiedIndoor;
         }
         if (attractions.isEmpty()) {
-            attractions = tourApiClient.areaBased(
-                    CHUNGNAM_AREA_CODE, sigunguCode(region), TOURIST_ATTRACTION, 80);
+            attractions = awaitOrEmpty(
+                    rainy ? outdoorAttractionsFuture : indoorAttractionsFuture);
         }
-        List<TourPlaceResponse> dining = await(diningFuture);
+        List<TourPlaceResponse> dining = awaitOrEmpty(diningFuture);
         List<TourPlaceResponse> accommodations = List.of();
 
         if ("COMPANION_OVERNIGHT_A".equals(routeTemplate)) {
@@ -345,8 +353,16 @@ public class CourseService {
         }
     }
 
+    private <T> List<T> awaitOrEmpty(CompletableFuture<List<T>> future) {
+        try {
+            return await(future);
+        } catch (RuntimeException ignored) {
+            return List.of();
+        }
+    }
+
     private CourseResponse buildCourse(PreparedCourseData prepared, int variant,
-                                       String requestedTemplate) {
+                                       String requestedTemplate, boolean resolveRealtimeRoutes) {
         Region region = prepared.region();
         boolean military = prepared.military();
         Set<String> concepts = prepared.concepts();
@@ -418,7 +434,9 @@ public class CourseService {
             }
         }
 
-        List<RouteLegResponse> routes = buildRoutes(combo);
+        List<RouteLegResponse> routes = resolveRealtimeRoutes
+                ? buildRoutes(combo)
+                : buildEstimatedRoutes(combo);
         int totalDistance = routes.stream().mapToInt(RouteLegResponse::getDistanceMeters).sum();
         int totalDuration = routes.stream().mapToInt(RouteLegResponse::getDurationSeconds).sum();
         boolean hasRouteFallback = routes.stream().anyMatch(route ->
@@ -463,9 +481,11 @@ public class CourseService {
                 .source("TOUR_API_REALTIME+"
                         + (hourlyWeather.isEmpty() ? "WEATHER_UNAVAILABLE" : "WEATHER_API_REALTIME")
                         + "+"
-                        + (hasRouteFallback
-                                ? "KAKAO_MOBILITY_OR_LOCAL_DISTANCE_FALLBACK"
-                                : "KAKAO_MOBILITY_REALTIME"))
+                        + (!resolveRealtimeRoutes
+                                ? "LOCAL_DISTANCE_PREVIEW"
+                                : hasRouteFallback
+                                        ? "KAKAO_MOBILITY_OR_LOCAL_DISTANCE_FALLBACK"
+                                        : "KAKAO_MOBILITY_REALTIME"))
                 .build();
     }
 
@@ -499,6 +519,28 @@ public class CourseService {
                     .tollWon(route.tollWon())
                     .taxiFareWon(route.taxiFareWon())
                     .source(resolved.source())
+                    .build());
+        }
+        return List.copyOf(routes);
+    }
+
+    private List<RouteLegResponse> buildEstimatedRoutes(List<PlaceResponse> combo) {
+        List<RouteLegResponse> routes = new ArrayList<>();
+        for (int index = 0; index < combo.size() - 1; index++) {
+            PlaceResponse origin = combo.get(index);
+            PlaceResponse destination = combo.get(index + 1);
+            int distance = straightLineDistanceMeters(
+                    origin.getLatitude(), origin.getLongitude(),
+                    destination.getLatitude(), destination.getLongitude());
+            int duration = Math.max(60, (int) Math.ceil(distance / (35_000d / 3_600d)));
+            routes.add(RouteLegResponse.builder()
+                    .originPlaceId(origin.getId())
+                    .destinationPlaceId(destination.getId())
+                    .distanceMeters(distance)
+                    .durationSeconds(duration)
+                    .tollWon(0)
+                    .taxiFareWon(0)
+                    .source("LOCAL_DISTANCE_PREVIEW")
                     .build());
         }
         return List.copyOf(routes);

@@ -123,11 +123,11 @@ public class TourApiClient {
                 .build())
                 .retrieve()
                 .bodyToMono(JsonNode.class)
-                .timeout(Duration.ofSeconds(10))
-                .retryWhen(Retry.backoff(2, Duration.ofMillis(350))
-                        .maxBackoff(Duration.ofSeconds(2))
+                .timeout(Duration.ofSeconds(5))
+                .retryWhen(Retry.backoff(1, Duration.ofMillis(300))
+                        .maxBackoff(Duration.ofSeconds(1))
                         .filter(this::isTransientFailure))
-                .block(Duration.ofSeconds(30));
+                .block(Duration.ofSeconds(12));
     }
 
     private boolean isTransientFailure(Throwable error) {

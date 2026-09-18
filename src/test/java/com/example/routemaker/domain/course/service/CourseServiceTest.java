@@ -22,6 +22,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -183,6 +184,30 @@ class CourseServiceTest {
         assertThat(response.getRoutes()).allMatch(route ->
                 "LOCAL_DISTANCE_FALLBACK".equals(route.getSource()));
         assertThat(response.getTotalDistanceMeters()).isPositive();
+    }
+
+    @Test
+    void buildsFiveHomeCoursesWithoutBlockingOnKakaoRoutes() {
+        CourseRecommendRequest request = new CourseRecommendRequest();
+        request.setRegion(Region.GONGJU);
+
+        when(weatherApiClient.hourly("GONGJU")).thenReturn(List.of(
+                new HourlyWeatherResponse("12:00", 24, 10, false)));
+        when(tourApiClient.areaBased("34", "1", "12", 80)).thenReturn(List.of(
+                place("100", "12", "A02010100", "공산성", 127.1, 36.4),
+                place("101", "12", "A02010100", "박물관", 127.11, 36.41)));
+        when(tourApiClient.areaBased("34", "1", "14", 80)).thenReturn(List.of(
+                place("110", "14", "A02060100", "국립공주박물관", 127.12, 36.42)));
+        when(tourApiClient.areaBased("34", "1", "39", 100)).thenReturn(List.of(
+                place("200", "39", "A05020100", "공주식당", 127.2, 36.41),
+                place("300", "39", "A05020900", "공주카페", 127.3, 36.42)));
+
+        List<CourseResponse> responses = courseService.recommendCourses(request);
+
+        assertThat(responses).hasSize(5);
+        assertThat(responses).allMatch(response ->
+                response.getSource().contains("LOCAL_DISTANCE_PREVIEW"));
+        verifyNoInteractions(kakaoMobilityApiClient);
     }
 
     @Test
