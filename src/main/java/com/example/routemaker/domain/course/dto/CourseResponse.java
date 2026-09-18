@@ -16,6 +16,7 @@ public class CourseResponse {
     private Region region;
     private boolean indoor;
     private String weather;
+    private String adaptationNotice;
     private List<HourlyWeatherResponse> hourlyWeather;
     private String recommendedStartTime;
     private String targetArrivalTime;

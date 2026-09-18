@@ -2,6 +2,7 @@ package com.example.routemaker.domain.course.controller;
 
 import com.example.routemaker.domain.course.dto.CourseRecommendRequest;
 import com.example.routemaker.domain.course.dto.CourseResponse;
+import com.example.routemaker.domain.course.dto.CongestionAlternativeResponse;
 import com.example.routemaker.domain.course.dto.CourseBookmarkRequest;
 import com.example.routemaker.domain.course.dto.PopularCourseResponse;
 import com.example.routemaker.domain.course.dto.RoutePreviewRequest;
@@ -10,6 +11,7 @@ import com.example.routemaker.domain.course.service.CourseService;
 import com.example.routemaker.domain.course.service.CourseBookmarkService;
 import com.example.routemaker.domain.user.entity.User;
 import com.example.routemaker.global.response.ApiResponse;
+import com.example.routemaker.global.common.enums.Region;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -46,6 +48,17 @@ public class CourseController {
     @PostMapping("/route-preview")
     public ApiResponse<RoutePreviewResponse> previewRoute(@RequestBody RoutePreviewRequest request) {
         return ApiResponse.success(courseService.previewRoute(request));
+    }
+
+    @GetMapping("/congestion-alternatives")
+    public ApiResponse<CongestionAlternativeResponse> congestionAlternatives(
+            @RequestParam Region region,
+            @RequestParam String contentId,
+            @RequestParam String attractionName,
+            @RequestParam double latitude,
+            @RequestParam double longitude) {
+        return ApiResponse.success(courseService.congestionAlternatives(
+                region, contentId, attractionName, latitude, longitude));
     }
 
     @PostMapping("/bookmarks")

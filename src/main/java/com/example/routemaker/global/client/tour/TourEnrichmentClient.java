@@ -104,7 +104,7 @@ public class TourEnrichmentClient {
                         .queryParam("signguCd", administrativeSigunguCode(region))
                         .queryParam("tAtsNm", attractionName));
                 JsonNode item = items(root).stream()
-                        .min(Comparator.comparing(value -> text(value, "baseYmd")))
+                        .max(Comparator.comparing(value -> text(value, "baseYmd")))
                         .orElse(null);
                 if (item == null) return unavailable("예상 혼잡도 정보가 없습니다.");
                 double rate = item.path("cnctrRate").asDouble(-1);
@@ -124,6 +124,18 @@ public class TourEnrichmentClient {
                 return unavailable("예상 혼잡도를 불러오지 못했습니다.");
             }
         });
+    }
+
+    public CongestionForecast congestionForecast(Region region, String attractionName) {
+        Map<String, Object> value = congestion(region, attractionName);
+        boolean available = Boolean.TRUE.equals(value.get("available"));
+        double rate = value.get("rate") instanceof Number number
+                ? number.doubleValue()
+                : -1;
+        return new CongestionForecast(
+                available,
+                rate,
+                value.getOrDefault("level", "정보 없음").toString());
     }
 
     public Map<String, Object> audioGuide(String attractionName) {
@@ -258,6 +270,9 @@ public class TourEnrichmentClient {
 
     private record MapCacheEntry(Map<String, Object> value, long expiresAtNanos) {
         boolean expired() { return System.nanoTime() >= expiresAtNanos; }
+    }
+
+    public record CongestionForecast(boolean available, double rate, String level) {
     }
 
 }
