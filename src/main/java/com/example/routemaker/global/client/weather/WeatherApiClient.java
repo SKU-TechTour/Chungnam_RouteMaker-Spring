@@ -2,6 +2,7 @@ package com.example.routemaker.global.client.weather;
 
 import com.example.routemaker.domain.course.dto.HourlyWeatherResponse;
 import com.example.routemaker.global.client.weather.dto.WeatherForecastItemResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Component
 public class WeatherApiClient {
     private final WebClient client;
@@ -37,8 +39,11 @@ public class WeatherApiClient {
                         .queryParam("base_time", baseTime).queryParam("nx", nx).queryParam("ny", ny).build())
                 .retrieve()
                 .bodyToMono(JsonNode.class)
-                .timeout(Duration.ofSeconds(5))
-                .block(Duration.ofSeconds(6));
+                .timeout(Duration.ofSeconds(12))
+                .doOnError(error -> log.warn(
+                        "Weather API request failed baseDate={}, baseTime={}: {}",
+                        baseDate, baseTime, error.toString()))
+                .block(Duration.ofSeconds(13));
         List<WeatherForecastItemResponse> result = new ArrayList<>();
         if (root == null) return result;
         for (JsonNode item : root.path("response").path("body").path("items").path("item")) {

@@ -4,14 +4,13 @@ import com.example.routemaker.global.client.tour.dto.TourOperatingInfoResponse;
 import com.example.routemaker.global.client.tour.dto.TourCommonInfoResponse;
 import com.example.routemaker.global.client.tour.dto.TourPetInfoResponse;
 import com.example.routemaker.global.client.tour.dto.TourPlaceResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriBuilder;
-import reactor.util.retry.Retry;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
@@ -19,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.UnaryOperator;
 
+@Slf4j
 @Component
 public class TourApiClient {
     private final WebClient client;
@@ -123,19 +123,14 @@ public class TourApiClient {
                 .build())
                 .retrieve()
                 .bodyToMono(JsonNode.class)
-                .timeout(Duration.ofSeconds(5))
-                .retryWhen(Retry.backoff(1, Duration.ofMillis(300))
-                        .maxBackoff(Duration.ofSeconds(1))
-                        .filter(this::isTransientFailure))
-                .block(Duration.ofSeconds(12));
-    }
-
-    private boolean isTransientFailure(Throwable error) {
-        if (error instanceof WebClientResponseException responseError) {
-            return responseError.getStatusCode().value() == 429
-                    || responseError.getStatusCode().is5xxServerError();
-        }
-        return true;
+                // Cloudtype에서는 공공데이터 응답이 5초를 넘는 경우가 있다.
+                // 정상 응답을 중간에 취소하지 않고, 재시도로 대기시간을 두 배로
+                // 늘리지 않도록 단일 요청만 최대 12초 기다린다.
+                .timeout(Duration.ofSeconds(12))
+                .doOnError(error -> log.warn(
+                        "TourAPI request failed path={}: {}",
+                        path, error.toString()))
+                .block(Duration.ofSeconds(13));
     }
 
     private List<JsonNode> items(JsonNode root) {

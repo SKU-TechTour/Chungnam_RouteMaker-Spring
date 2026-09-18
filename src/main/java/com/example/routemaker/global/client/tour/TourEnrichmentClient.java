@@ -7,9 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriBuilder;
-import reactor.util.retry.Retry;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
@@ -190,16 +188,8 @@ public class TourEnrichmentClient {
                         .queryParam("MobileApp", "ChungnamRouteMaker")
                         .queryParam("_type", "json")).build())
                 .retrieve().bodyToMono(JsonNode.class)
-                .timeout(Duration.ofSeconds(8))
-                .retryWhen(Retry.backoff(1, Duration.ofMillis(300)).filter(this::isTransientFailure))
-                .block(Duration.ofSeconds(18));
-    }
-
-    private boolean isTransientFailure(Throwable error) {
-        if (error instanceof WebClientResponseException responseError) {
-            return responseError.getStatusCode().value() == 429 || responseError.getStatusCode().is5xxServerError();
-        }
-        return true;
+                .timeout(Duration.ofSeconds(12))
+                .block(Duration.ofSeconds(13));
     }
 
     private List<JsonNode> items(JsonNode root) {
