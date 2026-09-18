@@ -39,7 +39,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/courses/recommendations").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/courses/route-preview").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/courses/popular").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/courses/congestion-alternatives").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/courses/*/shuffle").permitAll()
                         .anyRequest().authenticated()
                 )

@@ -126,18 +126,6 @@ public class TourEnrichmentClient {
         });
     }
 
-    public CongestionForecast congestionForecast(Region region, String attractionName) {
-        Map<String, Object> value = congestion(region, attractionName);
-        boolean available = Boolean.TRUE.equals(value.get("available"));
-        double rate = value.get("rate") instanceof Number number
-                ? number.doubleValue()
-                : -1;
-        return new CongestionForecast(
-                available,
-                rate,
-                value.getOrDefault("level", "정보 없음").toString());
-    }
-
     public Map<String, Object> audioGuide(String attractionName) {
         return cached("audio:" + attractionName, () -> {
             try {
@@ -270,9 +258,6 @@ public class TourEnrichmentClient {
 
     private record MapCacheEntry(Map<String, Object> value, long expiresAtNanos) {
         boolean expired() { return System.nanoTime() >= expiresAtNanos; }
-    }
-
-    public record CongestionForecast(boolean available, double rate, String level) {
     }
 
 }

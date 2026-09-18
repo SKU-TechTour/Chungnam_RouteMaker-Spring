@@ -7,7 +7,6 @@ import com.example.routemaker.domain.course.dto.RoutePointRequest;
 import com.example.routemaker.domain.course.dto.RoutePreviewRequest;
 import com.example.routemaker.global.client.kakao.KakaoMobilityApiClient;
 import com.example.routemaker.global.client.tour.TourApiClient;
-import com.example.routemaker.global.client.tour.TourEnrichmentClient;
 import com.example.routemaker.global.client.tour.dto.TourPlaceResponse;
 import com.example.routemaker.global.client.weather.WeatherApiClient;
 import com.example.routemaker.global.common.enums.Region;
@@ -29,7 +28,6 @@ import static org.mockito.Mockito.when;
 class CourseServiceTest {
 
     @Mock TourApiClient tourApiClient;
-    @Mock TourEnrichmentClient tourEnrichmentClient;
     @Mock WeatherApiClient weatherApiClient;
     @Mock KakaoMobilityApiClient kakaoMobilityApiClient;
     @InjectMocks CourseService courseService;
@@ -196,8 +194,6 @@ class CourseServiceTest {
         when(tourApiClient.areaBased("34", "1", "12", 80)).thenReturn(List.of(
                 place("100", "12", "A02010100", "공산성", 127.1, 36.4),
                 place("101", "12", "A02010100", "박물관", 127.11, 36.41)));
-        when(tourApiClient.areaBased("34", "1", "14", 80)).thenReturn(List.of(
-                place("110", "14", "A02060100", "국립공주박물관", 127.12, 36.42)));
         when(tourApiClient.areaBased("34", "1", "39", 100)).thenReturn(List.of(
                 place("200", "39", "A05020100", "공주식당", 127.2, 36.41),
                 place("300", "39", "A05020900", "공주카페", 127.3, 36.42)));
@@ -209,63 +205,6 @@ class CourseServiceTest {
                 response.getSource().contains("LOCAL_DISTANCE_PREVIEW"));
         verifyNoInteractions(kakaoMobilityApiClient);
     }
-
-    @Test
-    void switchesToIndoorCulturalFacilityWhenRainIsExpected() {
-        CourseRecommendRequest request = new CourseRecommendRequest();
-        request.setRegion(Region.GONGJU);
-
-        TourPlaceResponse museum = place(
-                "110", "14", "A02060100", "국립공주박물관", 127.11, 36.45);
-        TourPlaceResponse restaurant = place(
-                "210", "39", "A05020100", "공주식당", 127.2, 36.41);
-        TourPlaceResponse cafe = place(
-                "310", "39", "A05020900", "공주카페", 127.3, 36.42);
-
-        when(weatherApiClient.hourly("GONGJU")).thenReturn(List.of(
-                new HourlyWeatherResponse("12:00", 20, 70, true),
-                new HourlyWeatherResponse("13:00", 20, 40, false)));
-        when(tourApiClient.areaBased("34", "1", "14", 80)).thenReturn(List.of(museum));
-        when(tourApiClient.areaBased("34", "1", "39", 100))
-                .thenReturn(List.of(restaurant, cafe));
-        when(kakaoMobilityApiClient.directions(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
-                .thenReturn(new KakaoMobilityApiClient.DrivingRoute(2000, 300, 0, 0));
-
-        CourseResponse response = courseService.recommendCourse(request);
-
-        assertThat(response.isIndoor()).isTrue();
-        assertThat(response.getCombo().get(0).getName()).isEqualTo("국립공주박물관");
-        assertThat(response.getAdaptationNotice()).contains("최대 강수확률 70%");
-    }
-
-    @Test
-    void suggestsNearbyLowCongestionAlternativesOnlyWhenCurrentPlaceIsHigh() {
-        TourPlaceResponse current = place(
-                "100", "12", "A02010100", "혼잡한 유적지", 127.10, 36.40);
-        TourPlaceResponse nearby = place(
-                "101", "12", "A02010100", "한적한 유적지", 127.11, 36.41);
-        TourPlaceResponse far = place(
-                "102", "12", "A02010100", "조용한 유적지", 127.30, 36.60);
-
-        when(tourEnrichmentClient.congestionForecast(Region.GONGJU, "혼잡한 유적지"))
-                .thenReturn(new TourEnrichmentClient.CongestionForecast(true, 82, "혼잡 예상"));
-        when(tourEnrichmentClient.congestionForecast(Region.GONGJU, "한적한 유적지"))
-                .thenReturn(new TourEnrichmentClient.CongestionForecast(true, 35, "여유"));
-        when(tourEnrichmentClient.congestionForecast(Region.GONGJU, "조용한 유적지"))
-                .thenReturn(new TourEnrichmentClient.CongestionForecast(true, 55, "보통"));
-        when(tourApiClient.areaBased("34", "1", "12", 100))
-                .thenReturn(List.of(current, nearby, far));
-        when(tourApiClient.areaBased("34", "1", "14", 100)).thenReturn(List.of());
-
-        var response = courseService.congestionAlternatives(
-                Region.GONGJU, "100", "혼잡한 유적지", 36.40, 127.10);
-
-        assertThat(response.replacementRecommended()).isTrue();
-        assertThat(response.alternatives()).extracting(value -> value.place().getName())
-                .containsExactly("한적한 유적지", "조용한 유적지");
-        assertThat(response.alternatives()).allMatch(value -> value.congestionRate() <= 70);
-    }
-
     private TourPlaceResponse place(String id, String type, String category, String name,
                                     double longitude, double latitude) {
         return new TourPlaceResponse(id, type, category, name, "충남", "", longitude, latitude);

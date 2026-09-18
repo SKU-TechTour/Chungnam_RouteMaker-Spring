@@ -2,7 +2,6 @@ package com.example.routemaker.domain.course.service;
 
 import com.example.routemaker.domain.course.dto.CourseRecommendRequest;
 import com.example.routemaker.domain.course.dto.CourseResponse;
-import com.example.routemaker.domain.course.dto.CongestionAlternativeResponse;
 import com.example.routemaker.domain.course.dto.HourlyWeatherResponse;
 import com.example.routemaker.domain.course.dto.RouteLegResponse;
 import com.example.routemaker.domain.course.dto.RouteCoordinateResponse;
@@ -13,7 +12,6 @@ import com.example.routemaker.domain.course.dto.RoutePreviewResponse;
 import com.example.routemaker.domain.place.dto.PlaceResponse;
 import com.example.routemaker.global.client.kakao.KakaoMobilityApiClient;
 import com.example.routemaker.global.client.tour.TourApiClient;
-import com.example.routemaker.global.client.tour.TourEnrichmentClient;
 import com.example.routemaker.global.client.tour.dto.TourPlaceResponse;
 import com.example.routemaker.global.client.weather.WeatherApiClient;
 import com.example.routemaker.global.common.enums.Region;
@@ -42,16 +40,11 @@ public class CourseService {
 
     private static final String CHUNGNAM_AREA_CODE = "34";
     private static final String TOURIST_ATTRACTION = "12";
-    private static final String CULTURAL_FACILITY = "14";
     private static final String RESTAURANT = "39";
     private static final String ACCOMMODATION = "32";
-    private static final double HIGH_CONGESTION_THRESHOLD = 70d;
-    private static final int WEATHER_DECISION_HOURS = 6;
-    private static final int CONGESTION_CANDIDATE_LIMIT = 6;
     private static final AtomicInteger API_THREAD_SEQUENCE = new AtomicInteger();
 
     private final TourApiClient tourApiClient;
-    private final TourEnrichmentClient tourEnrichmentClient;
     private final WeatherApiClient weatherApiClient;
     private final KakaoMobilityApiClient kakaoMobilityApiClient;
     private final ExecutorService externalApiExecutor = Executors.newFixedThreadPool(6, task -> {
@@ -136,86 +129,6 @@ public class CourseService {
         return new RoutePreviewResponse(List.copyOf(routes), distance, duration, source);
     }
 
-    public CongestionAlternativeResponse congestionAlternatives(
-            Region region, String contentId, String attractionName,
-            double latitude, double longitude) {
-        TourEnrichmentClient.CongestionForecast current =
-                tourEnrichmentClient.congestionForecast(region, attractionName);
-        if (!current.available()) {
-            return new CongestionAlternativeResponse(
-                    false, -1, "정보 없음",
-                    "이 장소는 관광지 집중률 예측 데이터가 없어 원래 코스를 유지합니다.",
-                    List.of());
-        }
-        if (current.rate() <= HIGH_CONGESTION_THRESHOLD) {
-            return new CongestionAlternativeResponse(
-                    false, current.rate(), current.level(),
-                    "혼잡 기준 70 이하라 원래 코스를 유지합니다.", List.of());
-        }
-
-        CompletableFuture<List<TourPlaceResponse>> attractionsFuture = async(() ->
-                safeAreaBased(
-                        CHUNGNAM_AREA_CODE, sigunguCode(region), TOURIST_ATTRACTION, 100));
-        CompletableFuture<List<TourPlaceResponse>> culturalFuture = async(() ->
-                safeAreaBased(
-                        CHUNGNAM_AREA_CODE, sigunguCode(region), CULTURAL_FACILITY, 100));
-        List<TourPlaceResponse> allCandidates = new ArrayList<>(await(attractionsFuture));
-        allCandidates.addAll(await(culturalFuture));
-
-        TourPlaceResponse currentPlace = allCandidates.stream()
-                .filter(place -> contentId.equals(place.contentId()))
-                .findFirst()
-                .orElse(null);
-        String currentType = currentPlace == null ? null : currentPlace.contentTypeId();
-        String currentCategoryGroup = currentPlace == null
-                ? ""
-                : categoryGroup(currentPlace.categoryCode());
-
-        List<TourPlaceResponse> sameType = allCandidates.stream()
-                .filter(this::hasUsableCoordinates)
-                .filter(place -> !contentId.equals(place.contentId()))
-                .filter(place -> !attractionName.equals(place.name()))
-                .filter(place -> currentType == null || currentType.equals(place.contentTypeId()))
-                .toList();
-        List<TourPlaceResponse> sameCategory = sameType.stream()
-                .filter(place -> currentCategoryGroup.isEmpty()
-                        || currentCategoryGroup.equals(categoryGroup(place.categoryCode())))
-                .toList();
-        List<TourPlaceResponse> nearbyCandidates =
-                (sameCategory.isEmpty() ? sameType : sameCategory).stream()
-                        .sorted(Comparator.comparingInt(place -> straightLineDistanceMeters(
-                                latitude, longitude, place.latitude(), place.longitude())))
-                        .limit(CONGESTION_CANDIDATE_LIMIT)
-                        .toList();
-
-        List<CompletableFuture<CongestionCandidate>> forecastFutures = nearbyCandidates.stream()
-                .map(place -> async(() -> new CongestionCandidate(
-                        place,
-                        tourEnrichmentClient.congestionForecast(region, place.name()),
-                        straightLineDistanceMeters(
-                                latitude, longitude, place.latitude(), place.longitude()))))
-                .toList();
-        List<CongestionAlternativeResponse.Alternative> alternatives = forecastFutures.stream()
-                .map(this::await)
-                .filter(candidate -> candidate.forecast().available())
-                .filter(candidate -> candidate.forecast().rate() <= HIGH_CONGESTION_THRESHOLD)
-                .sorted(Comparator.comparingInt(CongestionCandidate::distanceMeters)
-                        .thenComparingDouble(candidate -> candidate.forecast().rate()))
-                .limit(2)
-                .map(candidate -> new CongestionAlternativeResponse.Alternative(
-                        PlaceResponse.fromTour(candidate.place(), region, false, false),
-                        candidate.forecast().rate(),
-                        candidate.forecast().level(),
-                        candidate.distanceMeters()))
-                .toList();
-
-        String reason = alternatives.isEmpty()
-                ? "현재 혼잡도는 70을 넘지만, 같은 지역에서 혼잡도가 확인된 대체 장소를 찾지 못해 원래 코스를 유지합니다."
-                : "현재 장소의 예상 혼잡도가 70을 넘어 가까운 동일 유형 장소를 추천합니다.";
-        return new CongestionAlternativeResponse(
-                !alternatives.isEmpty(), current.rate(), current.level(), reason, alternatives);
-    }
-
     private List<RouteCoordinateResponse> simplifyRoutePath(
             List<KakaoMobilityApiClient.RouteCoordinate> path) {
         final int maximumPointsPerLeg = 240;
@@ -243,9 +156,8 @@ public class CourseService {
 
     private PreparedCourseData prepare(Region region, boolean military, Set<String> concepts,
                                        String routeTemplate) {
-        // 날씨 결과를 기다린 뒤 관광 API를 호출하면 두 외부 API의 지연시간이
-        // 그대로 합산된다. 홈 진입에서는 실내·야외 후보와 식당, 날씨를 동시에
-        // 조회한 뒤 예보에 맞는 후보만 선택한다.
+        // 날씨와 TourAPI는 동시에 조회하되, 날씨·혼잡도에 따라 사용자가 고른
+        // 코스를 자동 교체하지 않는다. 날씨는 화면 안내 데이터로만 반환한다.
         CompletableFuture<List<HourlyWeatherResponse>> weatherFuture = async(() -> {
             try {
                 return weatherApiClient.hourly(region.name());
@@ -253,49 +165,27 @@ public class CourseService {
                 return List.of();
             }
         });
-        CompletableFuture<List<TourPlaceResponse>> outdoorAttractionsFuture = async(() ->
+        CompletableFuture<List<TourPlaceResponse>> attractionsFuture = async(() ->
                 tourApiClient.areaBased(
                         CHUNGNAM_AREA_CODE, sigunguCode(region), TOURIST_ATTRACTION, 80));
-        CompletableFuture<List<TourPlaceResponse>> indoorAttractionsFuture = async(() ->
-                tourApiClient.areaBased(
-                        CHUNGNAM_AREA_CODE, sigunguCode(region), CULTURAL_FACILITY, 80));
         CompletableFuture<List<TourPlaceResponse>> diningFuture = async(() ->
                 tourApiClient.areaBased(
                         CHUNGNAM_AREA_CODE, sigunguCode(region), RESTAURANT, 100));
 
         List<HourlyWeatherResponse> hourlyWeather = await(weatherFuture);
-        List<HourlyWeatherResponse> decisionWindow = hourlyWeather.stream()
-                .limit(WEATHER_DECISION_HOURS)
-                .toList();
-        boolean rainy = decisionWindow.stream()
+        boolean rainy = hourlyWeather.stream()
                 .anyMatch(HourlyWeatherResponse::precipitationExpected);
-        int maximumRainProbability = decisionWindow.stream()
-                .mapToInt(HourlyWeatherResponse::precipitationProbability)
-                .max()
-                .orElse(0);
-        String attractionType = rainy ? CULTURAL_FACILITY : TOURIST_ATTRACTION;
-        List<TourPlaceResponse> attractions = awaitOrEmpty(
-                rainy ? indoorAttractionsFuture : outdoorAttractionsFuture);
-        if (rainy) {
-            List<TourPlaceResponse> verifiedIndoor = attractions.stream()
-                    .filter(this::isIndoorAttraction)
-                    .toList();
-            if (!verifiedIndoor.isEmpty()) attractions = verifiedIndoor;
-        }
-        if (attractions.isEmpty()) {
-            attractions = awaitOrEmpty(
-                    rainy ? outdoorAttractionsFuture : indoorAttractionsFuture);
-        }
+        List<TourPlaceResponse> attractions = awaitOrEmpty(attractionsFuture);
         List<TourPlaceResponse> dining = awaitOrEmpty(diningFuture);
         List<TourPlaceResponse> accommodations = List.of();
 
         if ("COMPANION_OVERNIGHT_A".equals(routeTemplate)) {
             CompletableFuture<List<TourPlaceResponse>> buyeoAttractionsFuture = async(() ->
                     tourApiClient.areaBased(
-                            CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), attractionType, 80));
+                            CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), TOURIST_ATTRACTION, 80));
             CompletableFuture<List<TourPlaceResponse>> gongjuAttractionsFuture = async(() ->
                     tourApiClient.areaBased(
-                            CHUNGNAM_AREA_CODE, sigunguCode(Region.GONGJU), attractionType, 80));
+                            CHUNGNAM_AREA_CODE, sigunguCode(Region.GONGJU), TOURIST_ATTRACTION, 80));
             CompletableFuture<List<TourPlaceResponse>> buyeoDiningFuture = async(() ->
                     tourApiClient.areaBased(
                             CHUNGNAM_AREA_CODE, sigunguCode(Region.BUYEO), RESTAURANT, 100));
@@ -310,12 +200,6 @@ public class CourseService {
             combinedAttractions.addAll(await(buyeoAttractionsFuture));
             combinedAttractions.addAll(await(gongjuAttractionsFuture));
             attractions = combinedAttractions;
-            if (rainy) {
-                List<TourPlaceResponse> verifiedIndoor = attractions.stream()
-                        .filter(this::isIndoorAttraction)
-                        .toList();
-                if (!verifiedIndoor.isEmpty()) attractions = verifiedIndoor;
-            }
             List<TourPlaceResponse> combinedDining = new ArrayList<>(dining);
             combinedDining.addAll(await(buyeoDiningFuture));
             combinedDining.addAll(await(gongjuDiningFuture));
@@ -334,8 +218,7 @@ public class CourseService {
 
         return new PreparedCourseData(
                 region, military, concepts == null ? Set.of() : concepts,
-                rainy, maximumRainProbability, hourlyWeather,
-                attractions, dining, accommodations);
+                rainy, hourlyWeather, attractions, dining, accommodations);
     }
 
     private <T> CompletableFuture<T> async(Supplier<T> supplier) {
@@ -367,7 +250,6 @@ public class CourseService {
         boolean military = prepared.military();
         Set<String> concepts = prepared.concepts();
         boolean rainy = prepared.rainy();
-        int maximumRainProbability = prepared.maximumRainProbability();
         List<HourlyWeatherResponse> hourlyWeather = prepared.hourlyWeather();
         List<TourPlaceResponse> attractions = prepared.attractions();
         List<TourPlaceResponse> dining = prepared.dining();
@@ -466,11 +348,6 @@ public class CourseService {
                 .region(region)
                 .indoor(rainy)
                 .weather(rainy ? "RAINY" : "CLEAR")
-                .adaptationNotice(rainy
-                        ? "앞으로 6시간 내 강수 예보(최대 강수확률 "
-                                + maximumRainProbability
-                                + "%)를 반영해 실내 문화시설 중심으로 코스를 바꿨어요."
-                        : null)
                 .hourlyWeather(hourlyWeather)
                 .recommendedStartTime(recommendedStartTime)
                 .targetArrivalTime(targetArrivalTime)
@@ -494,7 +371,6 @@ public class CourseService {
             boolean military,
             Set<String> concepts,
             boolean rainy,
-            int maximumRainProbability,
             List<HourlyWeatherResponse> hourlyWeather,
             List<TourPlaceResponse> attractions,
             List<TourPlaceResponse> dining,
@@ -605,42 +481,6 @@ public class CourseService {
         return "A05020900".equals(place.categoryCode())
                 || name.contains("카페") || name.contains("커피")
                 || name.contains("베이커리") || name.contains("빵");
-    }
-
-    private boolean isIndoorAttraction(TourPlaceResponse place) {
-        if (!CULTURAL_FACILITY.equals(place.contentTypeId())) return false;
-        String category = place.categoryCode() == null ? "" : place.categoryCode();
-        String name = place.name() == null ? "" : place.name();
-        boolean culturalIndoorCategory = category.startsWith("A0206");
-        boolean clearlyOutdoor = List.of(
-                        "공원", "광장", "거리", "산책", "둘레길", "야외", "수목원", "정원")
-                .stream().anyMatch(name::contains);
-        return culturalIndoorCategory && !clearlyOutdoor;
-    }
-
-    private boolean hasUsableCoordinates(TourPlaceResponse place) {
-        return place.latitude() != 0 && place.longitude() != 0;
-    }
-
-    private List<TourPlaceResponse> safeAreaBased(
-            String areaCode, String sigunguCode, String contentTypeId, int rows) {
-        try {
-            return tourApiClient.areaBased(areaCode, sigunguCode, contentTypeId, rows);
-        } catch (RuntimeException ignored) {
-            return List.of();
-        }
-    }
-
-    private String categoryGroup(String categoryCode) {
-        if (categoryCode == null || categoryCode.isBlank()) return "";
-        return categoryCode.substring(0, Math.min(5, categoryCode.length()));
-    }
-
-    private record CongestionCandidate(
-            TourPlaceResponse place,
-            TourEnrichmentClient.CongestionForecast forecast,
-            int distanceMeters
-    ) {
     }
 
     private List<TourPlaceResponse> filterByConcepts(
