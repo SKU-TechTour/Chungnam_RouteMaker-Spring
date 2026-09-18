@@ -7,8 +7,6 @@ import com.example.routemaker.domain.course.dto.PopularCourseResponse;
 import com.example.routemaker.domain.course.entity.CourseBookmark;
 import com.example.routemaker.domain.course.repository.CourseBookmarkRepository;
 import com.example.routemaker.domain.user.entity.User;
-import com.example.routemaker.global.client.tour.TourEnrichmentClient;
-import com.example.routemaker.global.common.enums.Region;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +14,6 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,16 +25,12 @@ import static org.mockito.Mockito.when;
 class CourseBookmarkServiceTest {
 
     private CourseBookmarkRepository repository;
-    private TourEnrichmentClient enrichmentClient;
     private CourseBookmarkService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(CourseBookmarkRepository.class);
-        enrichmentClient = mock(TourEnrichmentClient.class);
-        when(enrichmentClient.regionVisitorCounts()).thenReturn(Map.of(
-                Region.NONSAN, 100D, Region.GONGJU, 80D, Region.BUYEO, 60D));
-        service = new CourseBookmarkService(repository, enrichmentClient);
+        service = new CourseBookmarkService(repository);
     }
 
     @Test
@@ -79,23 +72,21 @@ class CourseBookmarkServiceTest {
     }
 
     @Test
-    void ranksPopularityWithEqualBookmarkAndVisitorWeights() throws Exception {
+    void ranksPopularityByBookmarkCountOnly() throws Exception {
         String spots = new ObjectMapper().writeValueAsString(request().spots());
         when(repository.findPopular(any(Pageable.class))).thenReturn(List.of(
                 new PopularCourseRow(
-                        "NONSAN:popular-bookmark", "NONSAN", "찜 우세", spots,
+                        "NONSAN:popular-bookmark", "NONSAN", "찜 10개", spots,
                         12000, 1500, 10L),
                 new PopularCourseRow(
-                        "GONGJU:popular-visitor", "GONGJU", "방문자 우세", spots,
+                        "GONGJU:fewer-bookmark", "GONGJU", "찜 5개", spots,
                         12000, 1500, 5L)));
-        when(enrichmentClient.regionVisitorCounts()).thenReturn(Map.of(
-                Region.NONSAN, 100D, Region.GONGJU, 1000D));
 
         var result = service.popular(3);
 
         assertThat(result).extracting(PopularCourseResponse::title)
-                .containsExactly("방문자 우세", "찜 우세");
-        assertThat(result.get(0).rankingBasis()).isEqualTo("지역 방문자수 50% · 코스 찜 50%");
+                .containsExactly("찜 10개", "찜 5개");
+        assertThat(result.get(0).rankingBasis()).isEqualTo("코스 찜 수 기준");
     }
 
     private CourseBookmarkRequest request() {

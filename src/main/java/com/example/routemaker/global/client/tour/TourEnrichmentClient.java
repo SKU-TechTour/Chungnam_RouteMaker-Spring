@@ -13,11 +13,8 @@ import reactor.util.retry.Retry;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,26 +29,20 @@ import java.util.stream.Collectors;
 public class TourEnrichmentClient {
 
     private static final Duration DETAIL_TTL = Duration.ofMinutes(15);
-    private static final Duration VISITOR_TTL = Duration.ofHours(6);
-
     private final WebClient withTourClient;
     private final WebClient congestionClient;
     private final WebClient audioClient;
-    private final WebClient dataLabClient;
     private final String serviceKey;
     private final Map<String, MapCacheEntry> detailCache = new ConcurrentHashMap<>();
-    private volatile VisitorCacheEntry visitorCache;
 
     public TourEnrichmentClient(
             @Qualifier("withTourWebClient") WebClient withTourClient,
             @Qualifier("congestionWebClient") WebClient congestionClient,
             @Qualifier("audioGuideWebClient") WebClient audioClient,
-            @Qualifier("dataLabWebClient") WebClient dataLabClient,
             @Value("${external-api.tour.service-key:}") String serviceKey) {
         this.withTourClient = withTourClient;
         this.congestionClient = congestionClient;
         this.audioClient = audioClient;
-        this.dataLabClient = dataLabClient;
         this.serviceKey = serviceKey;
     }
 
@@ -169,47 +160,6 @@ public class TourEnrichmentClient {
         });
     }
 
-    public Map<Region, Double> regionVisitorCounts() {
-        VisitorCacheEntry cached = visitorCache;
-        if (cached != null && !cached.expired()) return cached.value();
-        Map<Region, Double> result = fetchRegionVisitorCounts(LocalDate.now().minusDays(7));
-        if (result.isEmpty()) result = fetchRegionVisitorCounts(LocalDate.now().minusDays(14));
-        Map<Region, Double> immutable = Map.copyOf(result);
-        visitorCache = new VisitorCacheEntry(immutable, System.nanoTime() + VISITOR_TTL.toNanos());
-        return immutable;
-    }
-
-    public Map<String, Object> regionVisitors(Region region) {
-        double count = regionVisitorCounts().getOrDefault(region, 0D);
-        Map<String, Object> result = new HashMap<>();
-        result.put("available", count > 0);
-        result.put("region", region.name());
-        result.put("visitorCount", count);
-        result.put("notice", "이동통신 기반 지역 방문자 지표이며 실제 관광객 수와 다를 수 있습니다.");
-        result.put("source", "한국관광공사 빅데이터 지역별 방문자수");
-        return Map.copyOf(result);
-    }
-
-    private Map<Region, Double> fetchRegionVisitorCounts(LocalDate date) {
-        try {
-            String ymd = date.format(DateTimeFormatter.BASIC_ISO_DATE);
-            JsonNode root = get(dataLabClient, "/locgoRegnVisitrDDList", builder -> builder
-                    .queryParam("numOfRows", 1000).queryParam("pageNo", 1)
-                    .queryParam("startYmd", ymd).queryParam("endYmd", ymd));
-            Map<String, Region> codeToRegion = Map.of(
-                    "44150", Region.GONGJU, "44230", Region.NONSAN, "44760", Region.BUYEO);
-            Map<Region, Double> result = new EnumMap<>(Region.class);
-            for (JsonNode item : items(root)) {
-                Region region = codeToRegion.get(text(item, "signguCode"));
-                if (region != null) result.merge(region, item.path("touNum").asDouble(0), Double::sum);
-            }
-            return result;
-        } catch (RuntimeException error) {
-            log.warn("DataLabService failed date={}: {}", date, error.getMessage());
-            return Map.of();
-        }
-    }
-
     private UriBuilder areaParams(UriBuilder builder, Region region) {
         return builder.queryParam("areaCode", "34")
                 .queryParam("sigunguCode", tourSigunguCode(region))
@@ -310,7 +260,4 @@ public class TourEnrichmentClient {
         boolean expired() { return System.nanoTime() >= expiresAtNanos; }
     }
 
-    private record VisitorCacheEntry(Map<Region, Double> value, long expiresAtNanos) {
-        boolean expired() { return System.nanoTime() >= expiresAtNanos; }
-    }
 }

@@ -26,17 +26,17 @@ public class PlaceService {
             return List.of();
         }
 
-        Set<String> petFriendlyIds = request.isPetFriendly()
-                ? tourApiClient.petFriendlyContentIds()
-                : Set.of();
         Set<String> accessibleIds = request.isMovementConvenience()
                 ? tourEnrichmentClient.accessibleContentIds(region)
                 : Set.of();
 
-        return tourApiClient.areaBased(CHUNGNAM_AREA_CODE, sigunguCode(region)).stream()
-                .map(place -> enrich(place, region, request, petFriendlyIds))
+        var source = request.isPetFriendly()
+                ? tourApiClient.petFriendlyAreaBased(CHUNGNAM_AREA_CODE, sigunguCode(region))
+                : tourApiClient.areaBased(CHUNGNAM_AREA_CODE, sigunguCode(region));
+
+        return source.stream()
+                .map(place -> enrich(place, region, request, request.isPetFriendly()))
                 .filter(response -> request.getCategory() == null || response.getCategory() == request.getCategory())
-                .filter(response -> !request.isPetFriendly() || response.isPetFriendly())
                 .filter(response -> !request.isLargeParking() || response.isLargeParking())
                 .filter(response -> !request.isMovementConvenience()
                         || accessibleIds.contains(String.valueOf(response.getId())))
@@ -44,8 +44,7 @@ public class PlaceService {
     }
 
     private PlaceResponse enrich(TourPlaceResponse place, Region region, PlaceFilterRequest request,
-                                 Set<String> petFriendlyIds) {
-        boolean petFriendly = petFriendlyIds.contains(place.contentId());
+                                 boolean petFriendly) {
         boolean largeParking = request.isLargeParking() && hasLargeParking(place);
         return PlaceResponse.fromTour(place, region, petFriendly, largeParking);
     }

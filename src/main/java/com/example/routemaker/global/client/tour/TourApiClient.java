@@ -17,8 +17,6 @@ import tools.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.function.UnaryOperator;
 
 @Component
@@ -94,16 +92,23 @@ public class TourApiClient {
         return item == null ? TourPetInfoResponse.empty(contentId) : TourPetInfoResponse.from(contentId, item);
     }
 
-    /** 요청마다 반려동물 동반 가능 contentId 목록을 실시간 조회하며 저장하거나 캐시하지 않습니다. */
-    public Set<String> petFriendlyContentIds() {
+    /**
+     * 반려동물 동반 여행 API를 지역별 원천 목록으로 직접 조회합니다.
+     * 일반 관광정보 목록과 교집합을 만들면 목록 페이지 제한 때문에 공식 장소가
+     * 누락될 수 있으므로, 반려동물 필터에서는 이 결과를 그대로 사용합니다.
+     */
+    public List<TourPlaceResponse> petFriendlyAreaBased(String areaCode, String sigunguCode) {
         JsonNode root = get(petClient, "/areaBasedList2", builder -> builder
-                .queryParam("areaCode", "34")
-                .queryParam("numOfRows", 1000)
+                .queryParam("areaCode", areaCode)
+                .queryParam("sigunguCode", sigunguCode)
+                .queryParam("arrange", "A")
+                .queryParam("numOfRows", 100)
                 .queryParam("pageNo", 1));
-        return items(root).stream()
-                .map(item -> item.path("contentid").asText())
-                .filter(StringUtils::hasText)
-                .collect(Collectors.toUnmodifiableSet());
+        List<TourPlaceResponse> result = new ArrayList<>();
+        for (JsonNode item : items(root)) {
+            result.add(TourPlaceResponse.from(item));
+        }
+        return result;
     }
 
     private JsonNode get(String path, UnaryOperator<UriBuilder> params) {

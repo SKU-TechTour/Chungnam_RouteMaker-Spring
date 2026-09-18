@@ -61,11 +61,6 @@ public class ExternalApiController {
         return ApiResponse.success(tourEnrichmentClient.audioGuide(attractionName));
     }
 
-    @GetMapping("/tour/region-visitors")
-    public ApiResponse<?> regionVisitors(@RequestParam Region region) {
-        return ApiResponse.success(tourEnrichmentClient.regionVisitors(region));
-    }
-
     @GetMapping("/weather/short-term")
     public ApiResponse<?> weather(@RequestParam String baseDate, @RequestParam String baseTime,
                                   @RequestParam int nx, @RequestParam int ny) {

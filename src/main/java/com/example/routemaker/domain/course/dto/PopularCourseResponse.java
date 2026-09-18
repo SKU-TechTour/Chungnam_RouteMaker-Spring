@@ -10,7 +10,6 @@ public record PopularCourseResponse(
         int totalDistanceMeters,
         int totalDurationSeconds,
         long bookmarkCount,
-        double regionVisitorCount,
         double popularityScore,
         String rankingBasis
 ) {

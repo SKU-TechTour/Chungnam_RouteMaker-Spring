@@ -6,8 +6,6 @@ import com.example.routemaker.domain.course.dto.PopularCourseResponse;
 import com.example.routemaker.domain.course.entity.CourseBookmark;
 import com.example.routemaker.domain.course.repository.CourseBookmarkRepository;
 import com.example.routemaker.domain.user.entity.User;
-import com.example.routemaker.global.client.tour.TourEnrichmentClient;
-import com.example.routemaker.global.common.enums.Region;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Comparator;
 
 @Service
@@ -27,7 +24,6 @@ public class CourseBookmarkService {
     private static final TypeReference<List<BookmarkSpotRequest>> SPOT_LIST = new TypeReference<>() {};
 
     private final CourseBookmarkRepository bookmarkRepository;
-    private final TourEnrichmentClient tourEnrichmentClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Transactional
@@ -63,35 +59,21 @@ public class CourseBookmarkService {
         var candidates = bookmarkRepository.findPopular(PageRequest.of(0, 50));
         if (candidates.isEmpty()) return List.of();
 
-        Map<Region, Double> visitors = tourEnrichmentClient.regionVisitorCounts();
         double maxBookmarks = candidates.stream().mapToLong(row -> row.bookmarkCount()).max().orElse(1);
-        double maxVisitors = visitors.values().stream().mapToDouble(Double::doubleValue).max().orElse(1);
 
         return candidates.stream()
                 .map(row -> {
-                    Region region = parseRegion(row.region());
-                    double visitorCount = visitors.getOrDefault(region, 0D);
                     double bookmarkScore = maxBookmarks <= 0 ? 0 : row.bookmarkCount() / maxBookmarks;
-                    double visitorScore = maxVisitors <= 0 ? 0 : visitorCount / maxVisitors;
-                    double score = Math.round((bookmarkScore * 0.5 + visitorScore * 0.5) * 1000D) / 10D;
+                    double score = Math.round(bookmarkScore * 1000D) / 10D;
                     return new PopularCourseResponse(
                             row.routeKey(), row.region(), row.title(), readSpots(row.spotsJson()),
                             row.totalDistanceMeters(), row.totalDurationSeconds(), row.bookmarkCount(),
-                            visitorCount, score, "지역 방문자수 50% · 코스 찜 50%");
+                            score, "코스 찜 수 기준");
                 })
                 .sorted(Comparator.comparingDouble(PopularCourseResponse::popularityScore).reversed()
                         .thenComparing(Comparator.comparingLong(PopularCourseResponse::bookmarkCount).reversed()))
                 .limit(limit)
                 .toList();
-    }
-
-    private Region parseRegion(String value) {
-        if (value == null) return Region.NONSAN;
-        return switch (value.trim().toUpperCase()) {
-            case "공주", "GONGJU" -> Region.GONGJU;
-            case "부여", "BUYEO" -> Region.BUYEO;
-            default -> Region.NONSAN;
-        };
     }
 
     private String requireFirebaseUid(User user) {

@@ -53,13 +53,6 @@ public class ExternalWebClientConfig {
     }
 
     @Bean
-    @Qualifier("dataLabWebClient")
-    WebClient dataLabWebClient(WebClient.Builder builder,
-                               @Value("${external-api.data-lab.base-url:https://apis.data.go.kr/B551011/DataLabService}") String baseUrl) {
-        return externalClient(builder, baseUrl);
-    }
-
-    @Bean
     @Qualifier("weatherWebClient")
     WebClient weatherWebClient(WebClient.Builder builder,
                                @Value("${external-api.weather.base-url:https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0}") String baseUrl) {
