@@ -31,17 +31,23 @@ public class TourEnrichmentClient {
     private final WebClient congestionClient;
     private final WebClient audioClient;
     private final String serviceKey;
+    private final Duration requestTimeout;
+    private final Duration blockTimeout;
     private final Map<String, MapCacheEntry> detailCache = new ConcurrentHashMap<>();
 
     public TourEnrichmentClient(
             @Qualifier("withTourWebClient") WebClient withTourClient,
             @Qualifier("congestionWebClient") WebClient congestionClient,
             @Qualifier("audioGuideWebClient") WebClient audioClient,
-            @Value("${external-api.tour.service-key:}") String serviceKey) {
+            @Value("${external-api.tour.service-key:}") String serviceKey,
+            @Value("${external-api.request-timeout-seconds:40}") long requestTimeoutSeconds,
+            @Value("${external-api.block-timeout-seconds:45}") long blockTimeoutSeconds) {
         this.withTourClient = withTourClient;
         this.congestionClient = congestionClient;
         this.audioClient = audioClient;
         this.serviceKey = serviceKey;
+        this.requestTimeout = Duration.ofSeconds(requestTimeoutSeconds);
+        this.blockTimeout = Duration.ofSeconds(blockTimeoutSeconds);
     }
 
     public Set<String> accessibleContentIds(Region region) {
@@ -188,8 +194,8 @@ public class TourEnrichmentClient {
                         .queryParam("MobileApp", "ChungnamRouteMaker")
                         .queryParam("_type", "json")).build())
                 .retrieve().bodyToMono(JsonNode.class)
-                .timeout(Duration.ofSeconds(12))
-                .block(Duration.ofSeconds(13));
+                .timeout(requestTimeout)
+                .block(blockTimeout);
     }
 
     private List<JsonNode> items(JsonNode root) {

@@ -24,11 +24,17 @@ import java.util.Map;
 public class WeatherApiClient {
     private final WebClient client;
     private final String serviceKey;
+    private final Duration requestTimeout;
+    private final Duration blockTimeout;
 
     public WeatherApiClient(@Qualifier("weatherWebClient") WebClient client,
-                            @Value("${external-api.weather.service-key:}") String serviceKey) {
+                            @Value("${external-api.weather.service-key:}") String serviceKey,
+                            @Value("${external-api.request-timeout-seconds:40}") long requestTimeoutSeconds,
+                            @Value("${external-api.block-timeout-seconds:45}") long blockTimeoutSeconds) {
         this.client = client;
         this.serviceKey = serviceKey;
+        this.requestTimeout = Duration.ofSeconds(requestTimeoutSeconds);
+        this.blockTimeout = Duration.ofSeconds(blockTimeoutSeconds);
     }
 
     public List<WeatherForecastItemResponse> shortTerm(String baseDate, String baseTime, int nx, int ny) {
@@ -39,11 +45,11 @@ public class WeatherApiClient {
                         .queryParam("base_time", baseTime).queryParam("nx", nx).queryParam("ny", ny).build())
                 .retrieve()
                 .bodyToMono(JsonNode.class)
-                .timeout(Duration.ofSeconds(12))
+                .timeout(requestTimeout)
                 .doOnError(error -> log.warn(
                         "Weather API request failed baseDate={}, baseTime={}: {}",
                         baseDate, baseTime, error.toString()))
-                .block(Duration.ofSeconds(13));
+                .block(blockTimeout);
         List<WeatherForecastItemResponse> result = new ArrayList<>();
         if (root == null) return result;
         for (JsonNode item : root.path("response").path("body").path("items").path("item")) {

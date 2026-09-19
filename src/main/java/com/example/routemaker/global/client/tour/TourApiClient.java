@@ -24,13 +24,19 @@ public class TourApiClient {
     private final WebClient client;
     private final WebClient petClient;
     private final String serviceKey;
+    private final Duration requestTimeout;
+    private final Duration blockTimeout;
 
     public TourApiClient(@Qualifier("tourWebClient") WebClient client,
                          @Qualifier("petTourWebClient") WebClient petClient,
-                         @Value("${external-api.tour.service-key:}") String serviceKey) {
+                         @Value("${external-api.tour.service-key:}") String serviceKey,
+                         @Value("${external-api.request-timeout-seconds:40}") long requestTimeoutSeconds,
+                         @Value("${external-api.block-timeout-seconds:45}") long blockTimeoutSeconds) {
         this.client = client;
         this.petClient = petClient;
         this.serviceKey = serviceKey;
+        this.requestTimeout = Duration.ofSeconds(requestTimeoutSeconds);
+        this.blockTimeout = Duration.ofSeconds(blockTimeoutSeconds);
     }
 
     public List<TourPlaceResponse> searchKeyword(String keyword) {
@@ -123,14 +129,12 @@ public class TourApiClient {
                 .build())
                 .retrieve()
                 .bodyToMono(JsonNode.class)
-                // Cloudtype에서는 공공데이터 응답이 5초를 넘는 경우가 있다.
-                // 정상 응답을 중간에 취소하지 않고, 재시도로 대기시간을 두 배로
-                // 늘리지 않도록 단일 요청만 최대 12초 기다린다.
-                .timeout(Duration.ofSeconds(12))
+                // Cloudtype의 공공데이터 연결 지연에도 정상 응답을 중간에 취소하지 않는다.
+                .timeout(requestTimeout)
                 .doOnError(error -> log.warn(
                         "TourAPI request failed path={}: {}",
                         path, error.toString()))
-                .block(Duration.ofSeconds(13));
+                .block(blockTimeout);
     }
 
     private List<JsonNode> items(JsonNode root) {
