@@ -29,7 +29,6 @@ public class TourEnrichmentClient {
     private static final Duration DETAIL_TTL = Duration.ofMinutes(15);
     private final WebClient withTourClient;
     private final WebClient congestionClient;
-    private final WebClient audioClient;
     private final String serviceKey;
     private final Duration requestTimeout;
     private final Duration blockTimeout;
@@ -38,13 +37,11 @@ public class TourEnrichmentClient {
     public TourEnrichmentClient(
             @Qualifier("withTourWebClient") WebClient withTourClient,
             @Qualifier("congestionWebClient") WebClient congestionClient,
-            @Qualifier("audioGuideWebClient") WebClient audioClient,
             @Value("${external-api.tour.service-key:}") String serviceKey,
             @Value("${external-api.request-timeout-seconds:40}") long requestTimeoutSeconds,
             @Value("${external-api.block-timeout-seconds:45}") long blockTimeoutSeconds) {
         this.withTourClient = withTourClient;
         this.congestionClient = congestionClient;
-        this.audioClient = audioClient;
         this.serviceKey = serviceKey;
         this.requestTimeout = Duration.ofSeconds(requestTimeoutSeconds);
         this.blockTimeout = Duration.ofSeconds(blockTimeoutSeconds);
@@ -130,40 +127,6 @@ public class TourEnrichmentClient {
         });
     }
 
-    public Map<String, Object> audioGuide(String attractionName) {
-        return cached("audio:" + attractionName, () -> {
-            try {
-                JsonNode themeRoot = get(audioClient, "/themeSearchList", builder -> builder
-                        .queryParam("numOfRows", 10).queryParam("pageNo", 1)
-                        .queryParam("keyword", attractionName).queryParam("langCode", "ko"));
-                JsonNode theme = items(themeRoot).stream()
-                        .min(Comparator.comparingInt(item -> nameDistance(attractionName, text(item, "title"))))
-                        .orElse(null);
-                if (theme == null) return unavailable("제공되는 오디오 해설이 없습니다.");
-                String tid = text(theme, "tid");
-                String tlid = text(theme, "tlid");
-                JsonNode storyRoot = get(audioClient, "/storyBasedList", builder -> builder
-                        .queryParam("numOfRows", 20).queryParam("pageNo", 1)
-                        .queryParam("langCode", "ko").queryParam("tid", tid).queryParam("tlid", tlid));
-                JsonNode story = items(storyRoot).stream()
-                        .filter(item -> StringUtils.hasText(text(item, "audioUrl")))
-                        .findFirst().orElse(null);
-                if (story == null) return unavailable("제공되는 오디오 해설이 없습니다.");
-                Map<String, Object> result = new HashMap<>();
-                result.put("available", true);
-                result.put("title", text(story, "audioTitle"));
-                result.put("script", text(story, "script"));
-                result.put("audioUrl", secureUrl(text(story, "audioUrl")));
-                result.put("imageUrl", secureUrl(text(story, "imageUrl")));
-                result.put("source", "한국관광공사 오디 오디오 가이드");
-                return Map.copyOf(result);
-            } catch (RuntimeException error) {
-                log.warn("Odii failed attraction={}: {}", attractionName, error.getMessage());
-                return unavailable("오디오 해설을 불러오지 못했습니다.");
-            }
-        });
-    }
-
     private UriBuilder areaParams(UriBuilder builder, Region region) {
         return builder.queryParam("areaCode", "34")
                 .queryParam("sigunguCode", tourSigunguCode(region))
@@ -222,20 +185,8 @@ public class TourEnrichmentClient {
         return first + " · " + second;
     }
 
-    private String secureUrl(String value) {
-        return value.startsWith("http://") ? "https://" + value.substring(7) : value;
-    }
-
     private Map<String, Object> unavailable(String message) {
         return Map.of("available", false, "message", message);
-    }
-
-    private int nameDistance(String requested, String candidate) {
-        String left = requested.replaceAll("\\s", "");
-        String right = candidate.replaceAll("\\s", "");
-        if (left.equals(right)) return 0;
-        if (right.contains(left) || left.contains(right)) return 1;
-        return 10 + Math.abs(left.length() - right.length());
     }
 
     private Map<String, Object> cached(String key, Supplier<Map<String, Object>> supplier) {

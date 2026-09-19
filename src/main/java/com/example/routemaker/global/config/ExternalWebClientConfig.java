@@ -46,13 +46,6 @@ public class ExternalWebClientConfig {
     }
 
     @Bean
-    @Qualifier("audioGuideWebClient")
-    WebClient audioGuideWebClient(WebClient.Builder builder,
-                                  @Value("${external-api.audio.base-url:https://apis.data.go.kr/B551011/Odii}") String baseUrl) {
-        return externalClient(builder, baseUrl);
-    }
-
-    @Bean
     @Qualifier("weatherWebClient")
     WebClient weatherWebClient(WebClient.Builder builder,
                                @Value("${external-api.weather.base-url:https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0}") String baseUrl) {
