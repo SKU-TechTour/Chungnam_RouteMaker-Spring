@@ -3,11 +3,11 @@ package com.example.routemaker.global.client.weather;
 import com.example.routemaker.domain.course.dto.HourlyWeatherResponse;
 import com.example.routemaker.global.client.weather.dto.WeatherForecastItemResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
@@ -22,34 +22,33 @@ import java.util.Map;
 @Slf4j
 @Component
 public class WeatherApiClient {
-    private final WebClient client;
+    private final RestClient client;
     private final String serviceKey;
-    private final Duration requestTimeout;
-    private final Duration blockTimeout;
 
-    public WeatherApiClient(@Qualifier("weatherWebClient") WebClient client,
+    public WeatherApiClient(@Value("${external-api.weather.base-url:https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0}") String baseUrl,
                             @Value("${external-api.weather.service-key:}") String serviceKey,
-                            @Value("${external-api.request-timeout-seconds:40}") long requestTimeoutSeconds,
-                            @Value("${external-api.block-timeout-seconds:45}") long blockTimeoutSeconds) {
-        this.client = client;
+                            @Value("${external-api.request-timeout-seconds:40}") long requestTimeoutSeconds) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(requestTimeoutSeconds, 10)));
+        requestFactory.setReadTimeout(Duration.ofSeconds(requestTimeoutSeconds));
+        this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
         this.serviceKey = serviceKey;
-        this.requestTimeout = Duration.ofSeconds(requestTimeoutSeconds);
-        this.blockTimeout = Duration.ofSeconds(blockTimeoutSeconds);
     }
 
     public List<WeatherForecastItemResponse> shortTerm(String baseDate, String baseTime, int nx, int ny) {
         if (!StringUtils.hasText(serviceKey)) throw new IllegalStateException("WEATHER_API_SERVICE_KEY 환경변수가 필요합니다.");
-        JsonNode root = client.get().uri(builder -> builder.path("/getVilageFcst")
-                        .queryParam("serviceKey", serviceKey).queryParam("pageNo", 1).queryParam("numOfRows", 1000)
-                        .queryParam("dataType", "JSON").queryParam("base_date", baseDate)
-                        .queryParam("base_time", baseTime).queryParam("nx", nx).queryParam("ny", ny).build())
-                .retrieve()
-                .bodyToMono(JsonNode.class)
-                .timeout(requestTimeout)
-                .doOnError(error -> log.warn(
-                        "Weather API request failed baseDate={}, baseTime={}: {}",
-                        baseDate, baseTime, error.toString()))
-                .block(blockTimeout);
+        JsonNode root;
+        try {
+            root = client.get().uri(builder -> builder.path("/getVilageFcst")
+                            .queryParam("serviceKey", serviceKey).queryParam("pageNo", 1).queryParam("numOfRows", 1000)
+                            .queryParam("dataType", "JSON").queryParam("base_date", baseDate)
+                            .queryParam("base_time", baseTime).queryParam("nx", nx).queryParam("ny", ny).build())
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RuntimeException error) {
+            log.warn("Weather API request failed baseDate={}, baseTime={}: {}", baseDate, baseTime, error.toString());
+            throw error;
+        }
         List<WeatherForecastItemResponse> result = new ArrayList<>();
         if (root == null) return result;
         for (JsonNode item : root.path("response").path("body").path("items").path("item")) {

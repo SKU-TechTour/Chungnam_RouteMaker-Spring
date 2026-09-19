@@ -5,11 +5,11 @@ import com.example.routemaker.global.client.tour.dto.TourCommonInfoResponse;
 import com.example.routemaker.global.client.tour.dto.TourPetInfoResponse;
 import com.example.routemaker.global.client.tour.dto.TourPlaceResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriBuilder;
 import tools.jackson.databind.JsonNode;
 
@@ -21,22 +21,17 @@ import java.util.function.UnaryOperator;
 @Slf4j
 @Component
 public class TourApiClient {
-    private final WebClient client;
-    private final WebClient petClient;
+    private final RestClient client;
+    private final RestClient petClient;
     private final String serviceKey;
-    private final Duration requestTimeout;
-    private final Duration blockTimeout;
 
-    public TourApiClient(@Qualifier("tourWebClient") WebClient client,
-                         @Qualifier("petTourWebClient") WebClient petClient,
+    public TourApiClient(@Value("${external-api.tour.base-url:https://apis.data.go.kr/B551011/KorService2}") String tourBaseUrl,
+                         @Value("${external-api.pet.base-url:https://apis.data.go.kr/B551011/KorPetTourService2}") String petBaseUrl,
                          @Value("${external-api.tour.service-key:}") String serviceKey,
-                         @Value("${external-api.request-timeout-seconds:40}") long requestTimeoutSeconds,
-                         @Value("${external-api.block-timeout-seconds:45}") long blockTimeoutSeconds) {
-        this.client = client;
-        this.petClient = petClient;
+                         @Value("${external-api.request-timeout-seconds:40}") long requestTimeoutSeconds) {
+        this.client = restClient(tourBaseUrl, requestTimeoutSeconds);
+        this.petClient = restClient(petBaseUrl, requestTimeoutSeconds);
         this.serviceKey = serviceKey;
-        this.requestTimeout = Duration.ofSeconds(requestTimeoutSeconds);
-        this.blockTimeout = Duration.ofSeconds(blockTimeoutSeconds);
     }
 
     public List<TourPlaceResponse> searchKeyword(String keyword) {
@@ -121,20 +116,26 @@ public class TourApiClient {
         return get(client, path, params);
     }
 
-    private JsonNode get(WebClient webClient, String path, UnaryOperator<UriBuilder> params) {
+    private JsonNode get(RestClient restClient, String path, UnaryOperator<UriBuilder> params) {
         requireKey();
-        return webClient.get().uri(builder -> params.apply(builder.path(path)
-                        .queryParam("serviceKey", serviceKey).queryParam("MobileOS", "ETC")
-                        .queryParam("MobileApp", "ChungnamRouteMaker").queryParam("_type", "json"))
-                .build())
-                .retrieve()
-                .bodyToMono(JsonNode.class)
-                // Cloudtype의 공공데이터 연결 지연에도 정상 응답을 중간에 취소하지 않는다.
-                .timeout(requestTimeout)
-                .doOnError(error -> log.warn(
-                        "TourAPI request failed path={}: {}",
-                        path, error.toString()))
-                .block(blockTimeout);
+        try {
+            return restClient.get().uri(builder -> params.apply(builder.path(path)
+                            .queryParam("serviceKey", serviceKey).queryParam("MobileOS", "ETC")
+                            .queryParam("MobileApp", "ChungnamRouteMaker").queryParam("_type", "json"))
+                    .build())
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RuntimeException error) {
+            log.warn("TourAPI request failed path={}: {}", path, error.toString());
+            throw error;
+        }
+    }
+
+    private RestClient restClient(String baseUrl, long requestTimeoutSeconds) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(Math.min(requestTimeoutSeconds, 10)));
+        requestFactory.setReadTimeout(Duration.ofSeconds(requestTimeoutSeconds));
+        return RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
     }
 
     private List<JsonNode> items(JsonNode root) {
