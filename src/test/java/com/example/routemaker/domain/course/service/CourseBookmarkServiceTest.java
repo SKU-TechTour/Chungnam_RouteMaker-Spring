@@ -7,6 +7,7 @@ import com.example.routemaker.domain.course.dto.PopularCourseResponse;
 import com.example.routemaker.domain.course.entity.CourseBookmark;
 import com.example.routemaker.domain.course.repository.CourseBookmarkRepository;
 import com.example.routemaker.domain.user.entity.User;
+import com.example.routemaker.global.common.enums.Region;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -87,6 +88,42 @@ class CourseBookmarkServiceTest {
         assertThat(result).extracting(PopularCourseResponse::title)
                 .containsExactly("찜 10개", "찜 5개");
         assertThat(result.get(0).rankingBasis()).isEqualTo("코스 찜 수 기준");
+    }
+
+    @Test
+    void fillsEachRegionWithThreeDistinctHonestDefaults() {
+        for (Region region : Region.values()) {
+            when(repository.findPopularByRegion(org.mockito.ArgumentMatchers.eq(region.name()),
+                    any(Pageable.class))).thenReturn(List.of());
+
+            var result = service.popularByRegion(3, region);
+
+            assertThat(result).hasSize(3);
+            assertThat(result).extracting(PopularCourseResponse::routeKey).doesNotHaveDuplicates();
+            assertThat(result).allSatisfy(course -> {
+                assertThat(course.region()).isEqualTo(region.name());
+                assertThat(course.bookmarkCount()).isZero();
+                assertThat(course.rankingBasis()).isEqualTo("기본 추천 코스");
+                assertThat(course.spots()).hasSizeGreaterThanOrEqualTo(2);
+            });
+        }
+    }
+
+    @Test
+    void keepsRealBookmarksAheadOfDefaultRoutesWithoutDuplication() throws Exception {
+        String spots = new ObjectMapper().writeValueAsString(request().spots());
+        String defaultRouteKey = DefaultPopularCourses.forRegion(Region.NONSAN).get(0).routeKey();
+        when(repository.findPopularByRegion(org.mockito.ArgumentMatchers.eq("NONSAN"),
+                any(Pageable.class))).thenReturn(List.of(
+                        new PopularCourseRow(defaultRouteKey, "NONSAN", "실제 찜 코스", spots,
+                                12000, 1500, 2L)));
+
+        var result = service.popularByRegion(3, Region.NONSAN);
+
+        assertThat(result).hasSize(3);
+        assertThat(result.get(0).routeKey()).isEqualTo(defaultRouteKey);
+        assertThat(result.get(0).bookmarkCount()).isEqualTo(2L);
+        assertThat(result).extracting(PopularCourseResponse::routeKey).doesNotHaveDuplicates();
     }
 
     private CourseBookmarkRequest request() {

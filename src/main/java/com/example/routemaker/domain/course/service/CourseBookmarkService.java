@@ -6,6 +6,7 @@ import com.example.routemaker.domain.course.dto.PopularCourseResponse;
 import com.example.routemaker.domain.course.entity.CourseBookmark;
 import com.example.routemaker.domain.course.repository.CourseBookmarkRepository;
 import com.example.routemaker.domain.user.entity.User;
+import com.example.routemaker.global.common.enums.Region;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Comparator;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -74,6 +78,33 @@ public class CourseBookmarkService {
                         .thenComparing(Comparator.comparingLong(PopularCourseResponse::bookmarkCount).reversed()))
                 .limit(limit)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PopularCourseResponse> popularByRegion(int requestedLimit, Region region) {
+        int limit = Math.max(1, Math.min(requestedLimit, 10));
+        var rows = bookmarkRepository.findPopularByRegion(region.name(), PageRequest.of(0, 50));
+        double maxBookmarks = rows.stream().mapToLong(row -> row.bookmarkCount()).max().orElse(0);
+        List<PopularCourseResponse> result = new ArrayList<>();
+        Set<String> routeKeys = new HashSet<>();
+
+        for (var row : rows) {
+            if (result.size() >= limit) break;
+            double score = maxBookmarks <= 0 ? 0
+                    : Math.round(row.bookmarkCount() / maxBookmarks * 1000D) / 10D;
+            result.add(new PopularCourseResponse(
+                    row.routeKey(), row.region(), row.title(), readSpots(row.spotsJson()),
+                    row.totalDistanceMeters(), row.totalDurationSeconds(), row.bookmarkCount(),
+                    score, "코스 찜 수 기준"));
+            routeKeys.add(row.routeKey());
+        }
+
+        // 실제 찜이 3개 미만이면, 찜 수를 꾸며내지 않은 기본 추천으로 빈 칸만 채운다.
+        for (var defaultCourse : DefaultPopularCourses.forRegion(region)) {
+            if (result.size() >= limit) break;
+            if (routeKeys.add(defaultCourse.routeKey())) result.add(defaultCourse);
+        }
+        return List.copyOf(result);
     }
 
     private String requireFirebaseUid(User user) {

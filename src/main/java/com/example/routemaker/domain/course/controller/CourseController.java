@@ -9,6 +9,7 @@ import com.example.routemaker.domain.course.dto.RoutePreviewResponse;
 import com.example.routemaker.domain.course.service.CourseService;
 import com.example.routemaker.domain.course.service.CourseBookmarkService;
 import com.example.routemaker.domain.user.entity.User;
+import com.example.routemaker.global.common.enums.Region;
 import com.example.routemaker.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -66,8 +67,11 @@ public class CourseController {
 
     @GetMapping("/popular")
     public ApiResponse<List<PopularCourseResponse>> popularCourses(
-            @RequestParam(defaultValue = "3") int limit) {
-        return ApiResponse.success(courseBookmarkService.popular(limit));
+            @RequestParam(defaultValue = "3") int limit,
+            @RequestParam(required = false) Region region) {
+        return ApiResponse.success(region == null
+                ? courseBookmarkService.popular(limit)
+                : courseBookmarkService.popularByRegion(limit, region));
     }
 
     @GetMapping("/{courseId}/shuffle")
